@@ -85,12 +85,12 @@ function makeEngine(){
  const tactical=new TacticalEngine({pitchContext:pitch});
  const behavior=new PlayerBehaviorEngine();
  const possession=new PossessionEngine({controlRadius:12});
- const possessionTransition=new PossessionStateTransition();
+ const possessionStateTransition=new PossessionStateTransition();
  const passEngine=new PassEngine();
  const shotEngine=new ShotEngine();
  const core=new SimulationCore({
   initialPlayers:ps,initialBall:ball,tacticalEngine:tactical,behaviorEngine:behavior,
-  possessionEngine:possession,possessionStateTransition:possessionTransition,
+  possessionEngine:possession,possessionStateTransition:possessionStateTransition,
   passTargetSelector:new PassTargetSelector(),shotDecisionEngine:new ShotDecisionEngine({pitchContext:pitch}),
   decisionEngine:new DecisionEngine(),passExecutor:new PassExecutor({passEngine,possessionStateTransition}),
   shotExecutor:new ShotExecutor({shotEngine,possessionStateTransition}),
