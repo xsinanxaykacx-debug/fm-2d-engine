@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FM 2D Live Simulation</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#10121a;color:#eee;font-family:Arial,sans-serif}
+header{padding:14px 18px;background:#181a26;border-bottom:1px solid #303343}
+h1{margin:0 0 6px;font-size:20px}.muted{color:#9ea4b5;font-size:13px}
+#app{max-width:1200px;margin:auto;padding:14px;display:grid;gap:10px}
+canvas{display:block;width:100%;height:auto;background:#17633e;border:2px solid #555;border-radius:8px}
+.controls,.stats{display:flex;flex-wrap:wrap;gap:8px}
+button{border:0;border-radius:6px;padding:10px 14px;background:#2b3042;color:#fff;font-weight:bold;cursor:pointer}
+button.primary{background:#218c58}button.danger{background:#a83d3d}
+.stat{background:#181a26;border:1px solid #303343;border-radius:6px;padding:9px 12px;min-width:130px}
+.label{font-size:10px;color:#888}.value{font-size:16px;font-weight:bold;margin-top:3px}
+#log{background:#181a26;border:1px solid #303343;border-radius:6px;padding:10px;font:12px Consolas,monospace;white-space:pre-wrap;color:#bfc5d4;min-height:70px}
+#error{display:none;background:#401b1b;border:1px solid #a33;border-radius:6px;padding:12px;color:#ffb0b0;white-space:pre-wrap;font:12px Consolas,monospace}
+</style>
+</head>
+<body>
+<header><h1>FM 2D Live Simulation</h1><div id="status" class="muted">Hazırlanıyor...</div></header>
+<main id="app">
+<canvas id="field" width="1100" height="680"></canvas>
+<div class="controls">
+<button id="start" class="primary">BAŞLAT</button><button id="stop">DURDUR</button><button id="step">1 TICK</button><button id="reset" class="danger">SIFIRLA</button>
+</div>
+<div class="stats">
+<div class="stat"><div class="label">SKOR</div><div id="score" class="value">0 - 0</div></div>
+<div class="stat"><div class="label">TICK</div><div id="tick" class="value">0</div></div>
+<div class="stat"><div class="label">TOP SAHİBİ</div><div id="owner" class="value">-</div></div>
+<div class="stat"><div class="label">TOP HIZI</div><div id="speed" class="value">0</div></div>
+<div class="stat"><div class="label">AKSİYON</div><div id="action" class="value">HAZIR</div></div>
+</div>
+<div id="log">Motor başlatılıyor...</div>
+<div id="error"></div>
+</main>
+<script type="module">
+import { MatchEngine } from "./src/core/MatchEngine.js";
+import { SimulationCore } from "./src/core/SimulationCore.js";
+import { PitchContext } from "./src/engine/PitchContext.js";
+import { TacticalEngine } from "./src/engine/TacticalEngine.js";
+import { PlayerBehaviorEngine } from "./src/engine/PlayerBehaviorEngine.js";
+import { PossessionEngine } from "./src/engine/PossessionEngine.js";
+import { PossessionStateTransition } from "./src/engine/PossessionStateTransition.js";
+import { PassTargetSelector } from "./src/engine/PassTargetSelector.js";
+import { ShotDecisionEngine } from "./src/engine/ShotDecisionEngine.js";
+import { DecisionEngine } from "./src/engine/DecisionEngine.js";
+import { PassEngine } from "./src/engine/PassEngine.js";
+import { PassExecutor } from "./src/engine/PassExecutor.js";
+import { ShotEngine } from "./src/engine/ShotEngine.js";
+import { ShotExecutor } from "./src/engine/ShotExecutor.js";
+import { PhysicsEngine } from "./src/engine/PhysicsEngine.js";
+import { CollisionDetector } from "./src/engine/CollisionDetector.js";
+import { CollisionStateTransition } from "./src/engine/CollisionStateTransition.js";
+import { BallPhysics } from "./src/engine/BallPhysics.js";
+import { InterceptionDetector } from "./src/engine/InterceptionDetector.js";
+import { InterceptionStateTransition } from "./src/engine/InterceptionStateTransition.js";
+import { ReceiverDetector } from "./src/engine/ReceiverDetector.js";
+import { ReceiverStateTransition } from "./src/engine/ReceiverStateTransition.js";
+import { TickOrchestrator } from "./src/engine/TickOrchestrator.js";
+import { GoalDetector } from "./src/engine/GoalDetector.js";
+import { BoundaryDetector } from "./src/engine/BoundaryDetector.js";
+
+const W=105,H=68,DT=1/60;
+const canvas=document.getElementById("field"),ctx=canvas.getContext("2d");
+const statusEl=document.getElementById("status"),logEl=document.getElementById("log"),errorEl=document.getElementById("error");
+const scoreEl=document.getElementById("score"),tickEl=document.getElementById("tick"),ownerEl=document.getElementById("owner"),speedEl=document.getElementById("speed"),actionEl=document.getElementById("action");
+
+let matchEngine=null, pitch=null, goalDetector=null, boundaryDetector=null;
+let running=false, raf=null, tickCount=0, homeScore=0, awayScore=0, lastAction="HAZIR", lastEvent="";
+
+function players(){
+ const home=[[5,34],[15,12],[15,28],[15,40],[15,56],[32,15],[32,30],[32,38],[32,53],[52.5,34],[42,43]];
+ const away=[[100,34],[90,12],[90,28],[90,40],[90,56],[73,15],[73,30],[73,38],[73,53],[63,25],[63,43]];
+ const roles=["GK","LB","LCB","RCB","RB","LM","LCM","RCM","RM","ST","ST"];
+ return [...home.map((p,i)=>({id:i+1,teamId:"HOME",role:roles[i],position:{x:p[0],y:p[1]},basePosition:{x:p[0],y:p[1]}})),
+         ...away.map((p,i)=>({id:i+12,teamId:"AWAY",role:roles[i],position:{x:p[0],y:p[1]},basePosition:{x:p[0],y:p[1]}}))];
+}
+function makeEngine(){
+ const ps=players(), owner=ps.find(p=>p.id===10);
+ const ball={ownerId:10,position:{...owner.position},velocity:{x:0,y:0}};
+ pitch=new PitchContext({width:W,height:H});
+ const tactical=new TacticalEngine({pitchContext:pitch});
+ const behavior=new PlayerBehaviorEngine();
+ const possession=new PossessionEngine({controlRadius:12});
+ const possessionTransition=new PossessionStateTransition();
+ const passEngine=new PassEngine();
+ const shotEngine=new ShotEngine();
+ const core=new SimulationCore({
+  initialPlayers:ps,initialBall:ball,tacticalEngine:tactical,behaviorEngine:behavior,
+  possessionEngine:possession,possessionStateTransition:possessionTransition,
+  passTargetSelector:new PassTargetSelector(),shotDecisionEngine:new ShotDecisionEngine({pitchContext:pitch}),
+  decisionEngine:new DecisionEngine(),passExecutor:new PassExecutor({passEngine,possessionStateTransition}),
+  shotExecutor:new ShotExecutor({shotEngine,possessionStateTransition}),
+  physicsEngine:new PhysicsEngine({playerSpeed:120,pitchWidth:W,pitchHeight:H}),
+  collisionDetector:new CollisionDetector({collisionDistance:2}),
+  collisionStateTransition:new CollisionStateTransition({pitchWidth:W,pitchHeight:H}),
+  ballPhysics:new BallPhysics(),timeStep:DT
+ });
+ const orchestrator=new TickOrchestrator({
+  interceptionDetector:new InterceptionDetector(),interceptionStateTransition:new InterceptionStateTransition(),
+  receiverDetector:new ReceiverDetector(),receiverStateTransition:new ReceiverStateTransition()
+ });
+ matchEngine=new MatchEngine({simulationCore:core,tickOrchestrator:orchestrator,timeStep:DT});
+ goalDetector=new GoalDetector();
+ boundaryDetector=new BoundaryDetector({width:W,height:H});
+}
+function setBallOwner(state,id){
+ const p=state.players.find(x=>x.id===id);
+ if(!p)return state;
+ return state.nextState(state.players,state.ball?{...state.ball,ownerId:id,position:{...p.position},velocity:{x:0,y:0}}:null);
+}
+function restart(teamId){
+ const id=teamId==="HOME"?10:21;
+ matchEngine.simulationCore.setState(setBallOwner(matchEngine.state,id));
+ lastEvent=`RESTART → ${teamId} #${id}`;
+}
+function reset(){
+ stop();tickCount=0;homeScore=0;awayScore=0;lastAction="HAZIR";lastEvent="";makeEngine();clearError();statusEl.textContent="Hazır — 22 oyuncu + top";render();info();
+}
+function tick(){
+ const result=matchEngine.tick();
+ tickCount++;
+ const state=result.state;
+ const d=result.decisions?.find(x=>x.action==="PASS"||x.action==="SHOT");
+ if(d)lastAction=d.action==="PASS"?`PASS #${d.playerId} → #${d.receiverId}`:`SHOT #${d.playerId}`;
+ const g=goalDetector.detect(state.ball,{width:W,height:H,homeTeamId:"HOME",awayTeamId:"AWAY",homeAttackingSide:"RIGHT"});
+ if(g.isGoal){
+  if(g.scoringTeamId==="HOME")homeScore++; else if(g.scoringTeamId==="AWAY")awayScore++;
+  lastEvent=`GOOOL → ${g.scoringTeamId}`;
+  restart(g.concedingTeamId);
+ }else{
+  const b=boundaryDetector.evaluate(state.ball);
+  if(b.isOutOfBounds){
+   const touched=state.ball.lastTouchTeamId;
+   const team=touched==="HOME"?"AWAY":touched==="AWAY"?"HOME":(state.ball.ownerId===null?"HOME":(state.players.find(p=>p.id===state.ball.ownerId)?.teamId==="HOME"?"AWAY":"HOME"));
+   restart(team);
+  }
+ }
+ log(result);
+ render();info();
+}
+function frame(){if(!running)return;try{tick();raf=requestAnimationFrame(frame)}catch(e){fail(e)}}
+function start(){if(running)return;running=true;statusEl.textContent="CANLI";raf=requestAnimationFrame(frame)}
+function stop(){running=false;if(raf!==null)cancelAnimationFrame(raf);raf=null;statusEl.textContent="Durduruldu"}
+function drawPitch(){
+ ctx.clearRect(0,0,1100,680);ctx.fillStyle="#17633e";ctx.fillRect(0,0,1100,680);
+ ctx.strokeStyle="rgba(255,255,255,.85)";ctx.lineWidth=3;ctx.strokeRect(50,40,1000,600);
+ ctx.beginPath();ctx.moveTo(550,40);ctx.lineTo(550,640);ctx.stroke();
+ ctx.beginPath();ctx.arc(550,340,90,0,Math.PI*2);ctx.stroke();
+ ctx.beginPath();ctx.arc(550,340,4,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();
+ ctx.strokeRect(50,210,140,260);ctx.strokeRect(910,210,140,260);
+ ctx.strokeRect(50,275,55,130);ctx.strokeRect(995,275,55,130);
+ ctx.strokeRect(20,290,30,100);ctx.strokeRect(1050,290,30,100);
+}
+function sx(x){return 50+x*(1000/W)}function sy(y){return 40+y*(600/H)}
+function drawPlayer(p,owner){
+ const x=sx(p.position.x),y=sy(p.position.y),r=13;
+ if(p.id===owner){ctx.beginPath();ctx.arc(x,y,r+6,0,Math.PI*2);ctx.strokeStyle="#ffd84d";ctx.lineWidth=3;ctx.stroke()}
+ ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=p.teamId==="HOME"?"#2584ff":"#e64747";ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
+ ctx.fillStyle="#fff";ctx.font="bold 10px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(p.id),x,y);
+}
+function drawBall(b){
+ if(!b)return;const x=sx(b.position.x),y=sy(b.position.y),v=b.velocity,s=Math.hypot(v.x,v.y);
+ if(s>1){const k=Math.min(s*.012,25),dx=v.x/s,dy=v.y/s;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-dx*k,y-dy*k);ctx.strokeStyle="rgba(255,255,255,.4)";ctx.lineWidth=3;ctx.stroke()}
+ ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
+}
+function render(){
+ if(!matchEngine)return;const s=matchEngine.state;drawPitch();for(const p of s.players)drawPlayer(p,s.ball?.ownerId);drawBall(s.ball);
+}
+function info(){
+ if(!matchEngine)return;const b=matchEngine.state.ball,s=Math.hypot(b.velocity.x,b.velocity.y);
+ scoreEl.textContent=`${homeScore} - ${awayScore}`;tickEl.textContent=String(tickCount);
+ ownerEl.textContent=b.ownerId==null?"SAHİPSİZ":`#${b.ownerId}`;speedEl.textContent=s.toFixed(1);actionEl.textContent=lastAction;
+}
+function log(r){
+ const p=r.possessionSnapshot,targets=r.passTargets||[];
+ logEl.textContent=[
+  `Tick: ${tickCount}`,
+  `Top sahibi: ${r.state.ball?.ownerId??"null"}`,
+  `Possession: ${p?.ownerId??"null"}`,
+  `Rakip: ${p?.nearestOpponentId??"null"} / ${Number.isFinite(p?.nearestOpponentDistance)?p.nearestOpponentDistance.toFixed(1):"-"}`,
+  `Pass hedefi: ${targets.length}`,
+  `Aksiyon: ${lastAction}`,
+  lastEvent||""
+ ].filter(Boolean).join("\n");
+}
+function fail(e){stop();errorEl.style.display="block";errorEl.textContent=e?.stack||String(e);statusEl.textContent="MOTOR HATASI";console.error(e)}
+function clearError(){errorEl.style.display="none";errorEl.textContent=""}
+document.getElementById("start").onclick=start;
+document.getElementById("stop").onclick=stop;
+document.getElementById("step").onclick=()=>{try{tick()}catch(e){fail(e)}};
+document.getElementById("reset").onclick=reset;
+reset();
+</script>
+</body>
+</html>
