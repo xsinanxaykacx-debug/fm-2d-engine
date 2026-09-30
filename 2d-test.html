@@ -1,0 +1,1941 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>FM 2D Tactical Engine</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #10121a;
+    color: #eeeeee;
+    font-family: Arial, sans-serif;
+}
+
+header {
+    padding: 14px 18px;
+    background: #181a26;
+    border-bottom: 1px solid #303343;
+}
+
+header h1 {
+    margin: 0 0 6px;
+    font-size: 20px;
+}
+
+#status {
+    color: #9ea4b5;
+    font-size: 13px;
+}
+
+#app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    padding: 14px;
+}
+
+#fieldWrap {
+    width: min(1100px, 96vw);
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #17633e;
+    border: 2px solid #555;
+    border-radius: 8px;
+}
+
+.controls {
+    width: min(1100px, 96vw);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+button {
+    border: 0;
+    border-radius: 6px;
+    padding: 10px 14px;
+    background: #2b3042;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover {
+    background: #3b4258;
+}
+
+button.primary {
+    background: #218c58;
+}
+
+button.danger {
+    background: #a83d3d;
+}
+
+#info {
+    width: min(1100px, 96vw);
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.infoBox {
+    background: #181a26;
+    border: 1px solid #303343;
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.infoLabel {
+    font-size: 11px;
+    color: #888;
+    margin-bottom: 4px;
+}
+
+.infoValue {
+    font-size: 15px;
+    font-weight: bold;
+}
+
+#debug {
+    width: min(1100px, 96vw);
+    background: #181a26;
+    border: 1px solid #303343;
+    border-radius: 6px;
+    padding: 12px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    color: #bfc5d4;
+}
+
+#error {
+    display: none;
+    width: min(1100px, 96vw);
+    padding: 14px;
+    background: #401b1b;
+    border: 1px solid #a33;
+    border-radius: 6px;
+    color: #ffb0b0;
+    white-space: pre-wrap;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+}
+
+@media (max-width: 700px) {
+    #info {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>FM 2D Tactical Engine</h1>
+    <div id="status">Motor hazırlanıyor...</div>
+</header>
+
+<div id="app">
+
+    <div id="fieldWrap">
+        <canvas id="field" width="1100" height="680"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="resetBtn" class="danger">Sıfırla</button>
+        <button id="stepBtn">1 Tick</button>
+        <button id="startBtn" class="primary">Başlat</button>
+        <button id="stopBtn">Durdur</button>
+        <button id="passBtn">PASS Testi</button>
+        <button id="shotBtn">SHOT Testi</button>
+    </div>
+
+    <div id="info">
+
+        <div class="infoBox">
+            <div class="infoLabel">TICK</div>
+            <div id="tickInfo" class="infoValue">0</div>
+        </div>
+
+        <div class="infoBox">
+            <div class="infoLabel">TOP SAHİBİ</div>
+            <div id="ownerInfo" class="infoValue">-</div>
+        </div>
+
+        <div class="infoBox">
+            <div class="infoLabel">TOP HIZI</div>
+            <div id="speedInfo" class="infoValue">0.0</div>
+        </div>
+
+        <div class="infoBox">
+            <div class="infoLabel">DURUM</div>
+            <div id="actionInfo" class="infoValue">HAZIR</div>
+        </div>
+
+    </div>
+
+    <div id="debug">Debug: hazır</div>
+
+    <div id="error"></div>
+
+</div>
+
+
+<script type="module">
+
+import { SimulationCore }
+    from "./src/core/SimulationCore.js";
+
+import { PhysicsEngine }
+    from "./src/engine/PhysicsEngine.js";
+
+import { BallPhysics }
+    from "./src/engine/BallPhysics.js";
+
+import { PossessionEngine }
+    from "./src/engine/PossessionEngine.js";
+
+import { PossessionStateTransition }
+    from "./src/engine/PossessionStateTransition.js";
+
+import { PassTargetSelector }
+    from "./src/engine/PassTargetSelector.js";
+
+import { DecisionEngine }
+    from "./src/engine/DecisionEngine.js";
+
+import { PassEngine }
+    from "./src/engine/PassEngine.js";
+
+import { PassExecutor }
+    from "./src/engine/PassExecutor.js";
+
+import { ShotEngine }
+    from "./src/engine/ShotEngine.js";
+
+import { ShotExecutor }
+    from "./src/engine/ShotExecutor.js";
+
+import { CollisionDetector }
+    from "./src/engine/CollisionDetector.js";
+
+import { CollisionStateTransition }
+    from "./src/engine/CollisionStateTransition.js";
+
+import { InterceptionDetector }
+    from "./src/engine/InterceptionDetector.js";
+
+import { InterceptionStateTransition }
+    from "./src/engine/InterceptionStateTransition.js";
+
+import { ReceiverDetector }
+    from "./src/engine/ReceiverDetector.js";
+
+import { ReceiverStateTransition }
+    from "./src/engine/ReceiverStateTransition.js";
+
+import { TickOrchestrator }
+    from "./src/engine/TickOrchestrator.js";
+
+
+/* =========================================================
+   DOM
+========================================================= */
+
+const canvas =
+    document.getElementById("field");
+
+const ctx =
+    canvas.getContext("2d");
+
+const statusEl =
+    document.getElementById("status");
+
+const errorEl =
+    document.getElementById("error");
+
+const debugEl =
+    document.getElementById("debug");
+
+const tickInfo =
+    document.getElementById("tickInfo");
+
+const ownerInfo =
+    document.getElementById("ownerInfo");
+
+const speedInfo =
+    document.getElementById("speedInfo");
+
+const actionInfo =
+    document.getElementById("actionInfo");
+
+const resetBtn =
+    document.getElementById("resetBtn");
+
+const stepBtn =
+    document.getElementById("stepBtn");
+
+const startBtn =
+    document.getElementById("startBtn");
+
+const stopBtn =
+    document.getElementById("stopBtn");
+
+const passBtn =
+    document.getElementById("passBtn");
+
+const shotBtn =
+    document.getElementById("shotBtn");
+
+
+/* =========================================================
+   SABİTLER
+========================================================= */
+
+const FIELD = {
+    left: 50,
+    top: 40,
+    right: 1050,
+    bottom: 640
+};
+
+const TIME_STEP = 1 / 60;
+
+
+/* =========================================================
+   GLOBAL DURUM
+========================================================= */
+
+let simulationCore = null;
+
+let tickOrchestrator = null;
+
+let tickCount = 0;
+
+let running = false;
+
+let animationId = null;
+
+let lastAction = "HAZIR";
+
+
+/* =========================================================
+   OYUNCULAR
+========================================================= */
+
+function createPlayers() {
+
+    const players = [];
+
+    /*
+     * MAVİ
+     *
+     * #10 = oyun kurucu / top sahibi
+     */
+
+    const bluePositions = [
+
+        [130, 340],  // #1 GK
+
+        [230, 150],  // #2
+        [230, 250],  // #3
+        [230, 430],  // #4
+        [230, 530],  // #5
+
+        [390, 150],  // #6
+        [390, 270],  // #7
+        [390, 410],  // #8
+        [390, 530],  // #9
+
+        [550, 450],  // #10
+
+        [550, 550]   // #11
+    ];
+
+
+    /*
+     * KIRMIZI
+     */
+
+    const redPositions = [
+
+        [970, 340],  // #12 GK
+
+        [870, 150],  // #13
+        [870, 250],  // #14
+        [870, 430],  // #15
+        [870, 530],  // #16
+
+        [710, 150],  // #17
+        [710, 270],  // #18
+        [710, 410],  // #19
+        [710, 530],  // #20
+
+        [550, 150],  // #21
+
+        [850, 550]   // #22
+    ];
+
+
+    for (let i = 0; i < 11; i++) {
+
+        const p =
+            bluePositions[i];
+
+        players.push({
+
+            id: i + 1,
+
+            teamId: "BLUE",
+
+            role:
+                i === 0
+                    ? "GK"
+                    : "PLAYER",
+
+            position: {
+                x: p[0],
+                y: p[1]
+            },
+
+            basePosition: {
+                x: p[0],
+                y: p[1]
+            }
+        });
+    }
+
+
+    for (let i = 0; i < 11; i++) {
+
+        const p =
+            redPositions[i];
+
+        players.push({
+
+            id: i + 12,
+
+            teamId: "RED",
+
+            role:
+                i === 0
+                    ? "GK"
+                    : "PLAYER",
+
+            position: {
+                x: p[0],
+                y: p[1]
+            },
+
+            basePosition: {
+                x: p[0],
+                y: p[1]
+            }
+        });
+    }
+
+
+    return players;
+}
+
+
+/* =========================================================
+   MOTORU OLUŞTUR
+========================================================= */
+
+function createEngine() {
+
+    const players =
+        createPlayers();
+
+
+    const owner =
+        players.find(
+            player => player.id === 10
+        );
+
+
+    const ball = {
+
+        ownerId: 10,
+
+        position: {
+            x: owner.position.x,
+            y: owner.position.y
+        },
+
+        velocity: {
+            x: 0,
+            y: 0
+        }
+    };
+
+
+    simulationCore =
+        new SimulationCore({
+
+            initialPlayers:
+                players,
+
+            initialBall:
+                ball,
+
+            /*
+             * TacticalEngine YOK.
+             *
+             * PlayerBehaviorEngine de
+             * kullanılmıyor.
+             */
+            tacticalEngine:
+                null,
+
+            behaviorEngine:
+                null,
+
+            possessionEngine:
+                new PossessionEngine(),
+
+            passTargetSelector:
+                new PassTargetSelector(),
+
+            decisionEngine:
+                new DecisionEngine(),
+
+            passExecutor:
+                new PassExecutor({
+
+                    passEngine:
+                        new PassEngine(),
+
+                    possessionStateTransition:
+                        new PossessionStateTransition()
+                }),
+
+            shotExecutor:
+                new ShotExecutor({
+
+                    shotEngine:
+                        new ShotEngine(),
+
+                    possessionStateTransition:
+                        new PossessionStateTransition()
+                }),
+
+            physicsEngine:
+                new PhysicsEngine({
+
+                    playerSpeed:
+                        120
+                }),
+
+            collisionDetector:
+                new CollisionDetector(),
+
+            collisionStateTransition:
+                new CollisionStateTransition(),
+
+            ballPhysics:
+                new BallPhysics(),
+
+            timeStep:
+                TIME_STEP
+        });
+
+
+    tickOrchestrator =
+        new TickOrchestrator({
+
+            interceptionDetector:
+                new InterceptionDetector(),
+
+            interceptionStateTransition:
+                new InterceptionStateTransition(),
+
+            receiverDetector:
+                new ReceiverDetector(),
+
+            receiverStateTransition:
+                new ReceiverStateTransition()
+        });
+}
+
+
+/* =========================================================
+   RESET
+========================================================= */
+
+function reset() {
+
+    stop();
+
+    tickCount = 0;
+
+    lastAction =
+        "HAZIR";
+
+    createEngine();
+
+    clearError();
+
+    statusEl.textContent =
+        "Motor hazır — 22 oyuncu + top";
+
+    debugEl.textContent =
+        "Debug: 22 oyuncu oluşturuldu. Top #10'da.";
+
+    render();
+
+    updateInfo();
+}
+
+
+/* =========================================================
+   TEK MOTOR TICK
+========================================================= */
+
+function engineTick(options = {}) {
+
+    if (!simulationCore) {
+
+        throw new Error(
+            "SimulationCore oluşturulmamış."
+        );
+    }
+
+
+    const coreResult =
+        simulationCore.tick(options);
+
+
+    let finalState =
+        coreResult.state;
+
+
+    /*
+     * PASS sonrası interception / receiver.
+     */
+
+    if (tickOrchestrator) {
+
+        const orchestratorOptions = {
+
+            passerTeamId:
+                coreResult.passInfo?.passerTeamId
+                ?? null,
+
+            receivingTeamId:
+                coreResult.passInfo?.receivingTeamId
+                ?? null,
+
+            targetReceiverId:
+                coreResult.passInfo?.targetReceiverId
+                ?? null
+        };
+
+
+        finalState =
+            tickOrchestrator.tick(
+                finalState,
+                orchestratorOptions
+            );
+
+
+        simulationCore.setState(
+            finalState
+        );
+    }
+
+
+    tickCount++;
+
+
+    return {
+
+        state:
+            finalState,
+
+        coreResult
+    };
+}
+
+
+/* =========================================================
+   NORMAL TICK
+========================================================= */
+
+function normalTick() {
+
+    try {
+
+        const result =
+            engineTick();
+
+
+        const passDecision =
+            result.coreResult.decisions.find(
+                decision =>
+                    decision.action === "PASS"
+            );
+
+
+        const shotDecision =
+            result.coreResult.decisions.find(
+                decision =>
+                    decision.action === "SHOT"
+            );
+
+
+        if (passDecision) {
+
+            lastAction =
+                `PASS #${passDecision.playerId} → #${passDecision.receiverId}`;
+        }
+        else if (shotDecision) {
+
+            lastAction =
+                `SHOT #${shotDecision.playerId}`;
+        }
+
+
+        render();
+
+        updateInfo();
+
+        updateDebug(
+            result.coreResult
+        );
+
+
+    } catch (error) {
+
+        stop();
+
+        showError(error);
+
+        console.error(error);
+    }
+}
+
+
+/* =========================================================
+   PASS TESTİ
+========================================================= */
+
+function passTest() {
+
+    try {
+
+        if (!simulationCore) {
+
+            throw new Error(
+                "SimulationCore oluşturulmamış."
+            );
+        }
+
+
+        let state =
+            simulationCore.state;
+
+
+        /*
+         * Top sahibi.
+         */
+
+        const ownerId =
+            state.ball.ownerId;
+
+
+        if (
+            ownerId === null ||
+            ownerId === undefined
+        ) {
+
+            throw new Error(
+                "PASS testi için top sahibi bulunamadı."
+            );
+        }
+
+
+        const owner =
+            state.players.find(
+                player =>
+                    player.id === ownerId
+            );
+
+
+        if (!owner) {
+
+            throw new Error(
+                `Top sahibi #${ownerId} state içinde yok.`
+            );
+        }
+
+
+        /*
+         * Rakip oyunculardan biri.
+         */
+
+        const opponent =
+            state.players.find(
+                player =>
+                    player.teamId !== owner.teamId &&
+                    player.id !== owner.id
+            );
+
+
+        if (!opponent) {
+
+            throw new Error(
+                "Rakip oyuncu bulunamadı."
+            );
+        }
+
+
+        /*
+         * Rakibi kesin olarak
+         * 20 px uzağa yerleştiriyoruz.
+         */
+
+        const opponentX =
+            owner.position.x + 20;
+
+        const opponentY =
+            owner.position.y;
+
+
+        const updatedPlayers =
+            state.players.map(
+                player => {
+
+                    if (
+                        player.id === opponent.id
+                    ) {
+
+                        return Object.freeze({
+
+                            ...player,
+
+                            position:
+                                Object.freeze({
+
+                                    x:
+                                        opponentX,
+
+                                    y:
+                                        opponentY
+                                }),
+
+                            basePosition:
+                                Object.freeze({
+
+                                    x:
+                                        opponentX,
+
+                                    y:
+                                        opponentY
+                                })
+                        });
+                    }
+
+
+                    return Object.freeze({
+
+                        ...player,
+
+                        position:
+                            Object.freeze({
+
+                                x:
+                                    player.position.x,
+
+                                y:
+                                    player.position.y
+                            })
+                    });
+                }
+            );
+
+
+        /*
+         * Topu sahibinin tam pozisyonuna koy.
+         */
+
+        const updatedBall =
+            Object.freeze({
+
+                ...state.ball,
+
+                ownerId:
+                    owner.id,
+
+                position:
+                    Object.freeze({
+
+                        x:
+                            owner.position.x,
+
+                        y:
+                            owner.position.y
+                    }),
+
+                velocity:
+                    Object.freeze({
+
+                        x: 0,
+
+                        y: 0
+                    })
+            });
+
+
+        /*
+         * Immutable state.
+         */
+
+        state =
+            state.nextState(
+                updatedPlayers,
+                updatedBall
+            );
+
+
+        simulationCore.setState(
+            state
+        );
+
+
+        /*
+         * Şimdi gerçek motor.
+         */
+
+        const result =
+            engineTick();
+
+
+        const possession =
+            result.coreResult.possessionSnapshot;
+
+        const passTargets =
+            result.coreResult.passTargets;
+
+        const decisions =
+            result.coreResult.decisions;
+
+
+        const passDecision =
+            decisions.find(
+                decision =>
+                    decision.action === "PASS"
+            );
+
+
+        /*
+         * Gerçek teşhis.
+         */
+
+        const nearestDistance =
+            possession
+                ? possession.nearestOpponentDistance
+                : null;
+
+
+        debugEl.textContent =
+            [
+                "PASS TEST",
+
+                `Top sahibi: #${owner.id}`,
+
+                `Rakip: #${opponent.id}`,
+
+                `Rakip mesafesi: ${nearestDistance}`,
+
+                `PASS hedef sayısı: ${passTargets.length}`,
+
+                `Karar sayısı: ${decisions.length}`,
+
+                `PASS kararı: ${passDecision ? "EVET" : "HAYIR"}`
+            ].join("\n");
+
+
+        if (!passDecision) {
+
+            lastAction =
+                "PASS kararı oluşmadı";
+
+            statusEl.textContent =
+                "PASS kararı oluşmadı";
+
+            render();
+
+            updateInfo();
+
+            return;
+        }
+
+
+        lastAction =
+            `PASS #${passDecision.playerId} → #${passDecision.receiverId}`;
+
+
+        statusEl.textContent =
+            lastAction;
+
+
+        render();
+
+        updateInfo();
+
+
+    } catch (error) {
+
+        showError(error);
+
+        console.error(error);
+    }
+}
+
+
+/* =========================================================
+   SHOT TESTİ
+========================================================= */
+
+function shotTest() {
+
+    try {
+
+        if (!simulationCore) {
+
+            throw new Error(
+                "SimulationCore oluşturulmamış."
+            );
+        }
+
+
+        let state =
+            simulationCore.state;
+
+
+        let shooterId =
+            state.ball.ownerId;
+
+
+        /*
+         * Top sahipsizse #10'a ver.
+         */
+
+        if (
+            shooterId === null ||
+            shooterId === undefined
+        ) {
+
+            shooterId = 10;
+
+            const transition =
+                new PossessionStateTransition();
+
+
+            const shooter =
+                state.players.find(
+                    player =>
+                        player.id === shooterId
+                );
+
+
+            if (!shooter) {
+
+                throw new Error(
+                    "#10 bulunamadı."
+                );
+            }
+
+
+            const possessionSnapshot = {
+
+                ownerId:
+                    shooterId
+            };
+
+
+            const nextBall =
+                transition.apply(
+
+                    state.ball,
+
+                    possessionSnapshot,
+
+                    {
+                        release: false
+                    }
+                );
+
+
+            state =
+                state.nextState(
+                    state.players,
+                    nextBall
+                );
+
+
+            simulationCore.setState(
+                state
+            );
+        }
+
+
+        const shooter =
+            simulationCore.state.players.find(
+                player =>
+                    player.id === shooterId
+            );
+
+
+        if (!shooter) {
+
+            throw new Error(
+                `SHOOTER #${shooterId} bulunamadı.`
+            );
+        }
+
+
+        /*
+         * Kırmızı kale.
+         */
+
+        const targetPosition = {
+
+            x: 1040,
+
+            y: 340
+        };
+
+
+        const shotDecision = {
+
+            playerId:
+                shooterId,
+
+            action:
+                "SHOT",
+
+            shotType:
+                "GROUND"
+        };
+
+
+        const result =
+            engineTick({
+
+                shotDecision,
+
+                targetPosition
+            });
+
+
+        lastAction =
+            `SHOT #${shooterId} → KALE`;
+
+
+        statusEl.textContent =
+            lastAction;
+
+
+        debugEl.textContent =
+            [
+                "SHOT TEST",
+
+                `Shooter: #${shooterId}`,
+
+                `Hedef: (${targetPosition.x}, ${targetPosition.y})`,
+
+                `Top sahibi sonrası: ${
+                    result.state.ball.ownerId
+                }`,
+
+                `Top hızı: ${
+                    Math.hypot(
+                        result.state.ball.velocity.x,
+                        result.state.ball.velocity.y
+                    ).toFixed(2)
+                }`
+            ].join("\n");
+
+
+        render();
+
+        updateInfo();
+
+
+    } catch (error) {
+
+        showError(error);
+
+        console.error(error);
+    }
+}
+
+
+/* =========================================================
+   ANİMASYON
+========================================================= */
+
+function frame() {
+
+    if (!running) {
+
+        return;
+    }
+
+
+    normalTick();
+
+
+    if (running) {
+
+        animationId =
+            requestAnimationFrame(
+                frame
+            );
+    }
+}
+
+
+function start() {
+
+    if (running) {
+
+        return;
+    }
+
+
+    running = true;
+
+    statusEl.textContent =
+        "Motor çalışıyor";
+
+
+    animationId =
+        requestAnimationFrame(
+            frame
+        );
+}
+
+
+function stop() {
+
+    running = false;
+
+
+    if (animationId !== null) {
+
+        cancelAnimationFrame(
+            animationId
+        );
+
+        animationId = null;
+    }
+
+
+    statusEl.textContent =
+        "Motor durduruldu";
+}
+
+
+/* =========================================================
+   SAHA ÇİZ
+========================================================= */
+
+function drawPitch() {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    ctx.fillStyle =
+        "#17633e";
+
+    ctx.fillRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    ctx.strokeStyle =
+        "rgba(255,255,255,0.85)";
+
+    ctx.lineWidth = 3;
+
+
+    /*
+     * Saha.
+     */
+
+    ctx.strokeRect(
+
+        FIELD.left,
+
+        FIELD.top,
+
+        FIELD.right - FIELD.left,
+
+        FIELD.bottom - FIELD.top
+    );
+
+
+    /*
+     * Orta çizgi.
+     */
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        550,
+        FIELD.top
+    );
+
+    ctx.lineTo(
+        550,
+        FIELD.bottom
+    );
+
+    ctx.stroke();
+
+
+    /*
+     * Orta daire.
+     */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        550,
+        340,
+        90,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.stroke();
+
+
+    /*
+     * Orta nokta.
+     */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        550,
+        340,
+        4,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.fill();
+
+
+    /*
+     * Ceza sahaları.
+     */
+
+    ctx.strokeRect(
+        FIELD.left,
+        210,
+        140,
+        260
+    );
+
+    ctx.strokeRect(
+        910,
+        210,
+        140,
+        260
+    );
+
+
+    /*
+     * Kale alanları.
+     */
+
+    ctx.strokeRect(
+        FIELD.left,
+        275,
+        55,
+        130
+    );
+
+    ctx.strokeRect(
+        995,
+        275,
+        55,
+        130
+    );
+
+
+    /*
+     * Kaleler.
+     */
+
+    ctx.strokeRect(
+        20,
+        290,
+        30,
+        100
+    );
+
+    ctx.strokeRect(
+        1050,
+        290,
+        30,
+        100
+    );
+}
+
+
+/* =========================================================
+   OYUNCU ÇİZ
+========================================================= */
+
+function drawPlayer(
+    player,
+    ownerId
+) {
+
+    const x =
+        player.position.x;
+
+    const y =
+        player.position.y;
+
+
+    const radius = 18;
+
+
+    /*
+     * Top sahibi halkası.
+     */
+
+    if (
+        player.id === ownerId
+    ) {
+
+        ctx.beginPath();
+
+        ctx.arc(
+            x,
+            y,
+            radius + 7,
+            0,
+            Math.PI * 2
+        );
+
+        ctx.strokeStyle =
+            "#ffd84d";
+
+        ctx.lineWidth = 3;
+
+        ctx.stroke();
+    }
+
+
+    /*
+     * Oyuncu.
+     */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        x,
+        y,
+        radius,
+        0,
+        Math.PI * 2
+    );
+
+
+    ctx.fillStyle =
+        player.teamId === "BLUE"
+            ? "#2584ff"
+            : "#e64747";
+
+
+    ctx.fill();
+
+
+    ctx.strokeStyle =
+        "#ffffff";
+
+    ctx.lineWidth = 2;
+
+    ctx.stroke();
+
+
+    /*
+     * Numara.
+     */
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.font =
+        "bold 12px Arial";
+
+    ctx.textAlign =
+        "center";
+
+    ctx.textBaseline =
+        "middle";
+
+
+    ctx.fillText(
+        String(player.id),
+        x,
+        y
+    );
+}
+
+
+/* =========================================================
+   TOP ÇİZ
+========================================================= */
+
+function drawBall(ball) {
+
+    if (!ball) {
+
+        return;
+    }
+
+
+    const x =
+        ball.position.x;
+
+    const y =
+        ball.position.y;
+
+
+    const speed =
+        Math.hypot(
+            ball.velocity.x,
+            ball.velocity.y
+        );
+
+
+    /*
+     * Hareket izi.
+     */
+
+    if (speed > 1) {
+
+        const length =
+            Math.min(
+                speed * 0.08,
+                45
+            );
+
+
+        const dirX =
+            ball.velocity.x /
+            speed;
+
+
+        const dirY =
+            ball.velocity.y /
+            speed;
+
+
+        ctx.beginPath();
+
+        ctx.moveTo(
+            x,
+            y
+        );
+
+        ctx.lineTo(
+            x - dirX * length,
+            y - dirY * length
+        );
+
+
+        ctx.strokeStyle =
+            "rgba(255,255,255,0.35)";
+
+        ctx.lineWidth = 3;
+
+        ctx.stroke();
+    }
+
+
+    /*
+     * Top.
+     */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        x,
+        y,
+        9,
+        0,
+        Math.PI * 2
+    );
+
+
+    ctx.fillStyle =
+        "#ffffff";
+
+    ctx.fill();
+
+
+    ctx.strokeStyle =
+        "#111111";
+
+    ctx.lineWidth = 2;
+
+    ctx.stroke();
+
+
+    /*
+     * Merkez.
+     */
+
+    ctx.beginPath();
+
+    ctx.arc(
+        x,
+        y,
+        3,
+        0,
+        Math.PI * 2
+    );
+
+
+    ctx.fillStyle =
+        "#111111";
+
+    ctx.fill();
+}
+
+
+/* =========================================================
+   RENDER
+========================================================= */
+
+function render() {
+
+    if (!simulationCore) {
+
+        return;
+    }
+
+
+    const state =
+        simulationCore.state;
+
+
+    drawPitch();
+
+
+    /*
+     * Oyuncular.
+     */
+
+    for (
+        const player
+        of state.players
+    ) {
+
+        drawPlayer(
+            player,
+            state.ball?.ownerId
+        );
+    }
+
+
+    /*
+     * Top.
+     */
+
+    drawBall(
+        state.ball
+    );
+}
+
+
+/* =========================================================
+   BİLGİLER
+========================================================= */
+
+function updateInfo() {
+
+    if (!simulationCore) {
+
+        return;
+    }
+
+
+    const state =
+        simulationCore.state;
+
+
+    const ball =
+        state.ball;
+
+
+    tickInfo.textContent =
+        String(tickCount);
+
+
+    ownerInfo.textContent =
+
+        ball?.ownerId === null ||
+        ball?.ownerId === undefined
+
+            ? "SAHİPSİZ"
+
+            : `#${ball.ownerId}`;
+
+
+    const speed =
+        ball
+
+            ? Math.hypot(
+                ball.velocity.x,
+                ball.velocity.y
+            )
+
+            : 0;
+
+
+    speedInfo.textContent =
+        speed.toFixed(1);
+
+
+    actionInfo.textContent =
+        lastAction;
+}
+
+
+/* =========================================================
+   DEBUG
+========================================================= */
+
+function updateDebug(
+    coreResult
+) {
+
+    if (!coreResult) {
+
+        return;
+    }
+
+
+    const possession =
+        coreResult.possessionSnapshot;
+
+
+    const targets =
+        coreResult.passTargets;
+
+
+    debugEl.textContent =
+        [
+            `Tick: ${tickCount}`,
+
+            `Possession owner: ${
+                possession?.ownerId ?? "null"
+            }`,
+
+            `Nearest opponent: ${
+                possession?.nearestOpponentId ?? "null"
+            }`,
+
+            `Nearest opponent distance: ${
+                possession?.nearestOpponentDistance ?? "null"
+            }`,
+
+            `Pass targets: ${
+                Array.isArray(targets)
+                    ? targets.length
+                    : 0
+            }`,
+
+            `Ball owner: ${
+                simulationCore.state.ball.ownerId
+            }`
+        ].join("\n");
+}
+
+
+/* =========================================================
+   HATA
+========================================================= */
+
+function clearError() {
+
+    errorEl.style.display =
+        "none";
+
+    errorEl.textContent =
+        "";
+}
+
+
+function showError(error) {
+
+    running = false;
+
+
+    if (animationId !== null) {
+
+        cancelAnimationFrame(
+            animationId
+        );
+
+        animationId = null;
+    }
+
+
+    const message =
+        error instanceof Error
+
+            ? `${error.name}: ${error.message}\n\n${error.stack || ""}`
+
+            : String(error);
+
+
+    errorEl.textContent =
+        message;
+
+
+    errorEl.style.display =
+        "block";
+
+
+    statusEl.textContent =
+        "MOTOR HATASI";
+}
+
+
+/* =========================================================
+   BUTONLAR
+========================================================= */
+
+resetBtn.addEventListener(
+    "click",
+    () => {
+
+        try {
+
+            reset();
+
+        } catch (error) {
+
+            showError(error);
+
+            console.error(error);
+        }
+    }
+);
+
+
+stepBtn.addEventListener(
+    "click",
+    () => {
+
+        normalTick();
+    }
+);
+
+
+startBtn.addEventListener(
+    "click",
+    () => {
+
+        try {
+
+            start();
+
+        } catch (error) {
+
+            showError(error);
+
+            console.error(error);
+        }
+    }
+);
+
+
+stopBtn.addEventListener(
+    "click",
+    () => {
+
+        stop();
+
+        render();
+
+        updateInfo();
+    }
+);
+
+
+passBtn.addEventListener(
+    "click",
+    () => {
+
+        passTest();
+    }
+);
+
+
+shotBtn.addEventListener(
+    "click",
+    () => {
+
+        shotTest();
+    }
+);
+
+
+/* =========================================================
+   BAŞLAT
+========================================================= */
+
+try {
+
+    reset();
+
+} catch (error) {
+
+    showError(error);
+
+    console.error(error);
+}
+
+</script>
+
+</body>
+</html>
