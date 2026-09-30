@@ -289,7 +289,8 @@ export class SimulationCore {
             this.ballPhysics && currentState.ball
                 ? this.ballPhysics.step(
                     currentState.ball,
-                    this.timeStep
+                    this.timeStep,
+                    resolvedPlayers
                 )
                 : currentState.ball;
 
