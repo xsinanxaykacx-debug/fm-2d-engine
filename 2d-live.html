@@ -83,7 +83,12 @@ function makeEngine(){
  const ball={ownerId:10,position:{...owner.position},velocity:{x:0,y:0}};
  pitch=new PitchContext({width:W,height:H});
  const tactical=new TacticalEngine({pitchContext:pitch});
- const behavior=new PlayerBehaviorEngine();
+ const behavior=new PlayerBehaviorEngine({
+  supportDistance:25,
+  pressDistance:25,
+  ballInfluenceDistance:45,
+  forwardRunDistance:12
+});
  const possession=new PossessionEngine({controlRadius:12});
  const possessionStateTransition=new PossessionStateTransition();
  const passEngine=new PassEngine();
@@ -96,7 +101,7 @@ function makeEngine(){
   shotExecutor:new ShotExecutor({shotEngine,possessionStateTransition}),
   physicsEngine:new PhysicsEngine({playerSpeed:120,pitchWidth:W,pitchHeight:H}),
   collisionDetector:new CollisionDetector({collisionDistance:2}),
-  collisionStateTransition:new CollisionStateTransition({pitchWidth:W,pitchHeight:H}),
+  collisionStateTransition:new CollisionStateTransition({collisionDistance:2,pitchWidth:W,pitchHeight:H}),
   ballPhysics:new BallPhysics(),timeStep:DT
  });
  const orchestrator=new TickOrchestrator({
