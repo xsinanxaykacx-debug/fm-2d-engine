@@ -49,7 +49,7 @@ describe('SimulationCore + TickOrchestrator + Interception', () => {
             initialPlayers: [passer, receiver, opponent],
             initialBall: { ownerId: 7, velocity: { x: 0, y: 0 }, position: { x: 100, y: 100 } },
             tacticalEngine: new TestTacticalEngine(),
-            possessionEngine: new PossessionEngine({ controlRadius: 15 }),
+            possessionEngine: new PossessionEngine({ controlRadius: 12 }),
             passTargetSelector: new PassTargetSelector(),
             decisionEngine: new DecisionEngine(),
             passExecutor: new PassExecutor({

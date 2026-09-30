@@ -44,7 +44,7 @@ describe('SimulationCore + ShotExecutor', () => {
             initialPlayers: [shooter],
             initialBall: { ownerId: 7, velocity: { x: 0, y: 0 }, position: { x: 100, y: 100 } },
             tacticalEngine: new TestTacticalEngine(),
-            possessionEngine: new PossessionEngine({ controlRadius: 15 }),
+            possessionEngine: new PossessionEngine({ controlRadius: 12 }),
             decisionEngine: new DecisionEngine(),
             passExecutor: new PassExecutor({
                 passEngine: new PassEngine(),

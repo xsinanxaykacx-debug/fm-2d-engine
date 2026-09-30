@@ -89,7 +89,9 @@ export class DecisionEngine {
 
             const isOwner =
                 possessionSnapshot !== null &&
-                possessionSnapshot.ownerId === player.id;
+                state.ball !== null &&
+                state.ball !== undefined &&
+                state.ball.ownerId === player.id;
 
             const hasPassTarget =
                 passTargets.length > 0;

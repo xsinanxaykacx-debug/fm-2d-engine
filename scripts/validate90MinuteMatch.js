@@ -1,6 +1,14 @@
 // scripts/validate90MinuteMatch.js
 //
-// ... (yorum aynı)
+// 90 dakikalık maç simülasyonu doğrulama script'i.
+//
+// Amaç:
+//   - Motorun 90 dakika boyunca çökmeden çalıştığını doğrulamak
+//   - Determinizm kontrolü
+//   - Possession / PASS / SHOT / GOAL istatistiklerini toplamak
+//
+// NOT: Bu script motoru DEĞİŞTİRMEZ. Sadece gözlem yapar.
+//
 
 import { createHash } from 'node:crypto';
 
@@ -67,7 +75,8 @@ function createPlayers() {
         { x: 5, y: 34 },
         { x: 15, y: 12 }, { x: 15, y: 28 }, { x: 15, y: 40 }, { x: 15, y: 56 },
         { x: 32, y: 15 }, { x: 32, y: 30 }, { x: 32, y: 38 }, { x: 32, y: 53 },
-        { x: 42, y: 25 }, { x: 42, y: 43 }
+        { x: 52.5, y: 34 },   // #10 — kickoff noktası
+        { x: 42, y: 43 }
     ];
 
     const awayPositions = [
@@ -114,9 +123,9 @@ function createPlayers() {
 
 function createInitialBall() {
     return {
-        position: { x: PITCH_WIDTH / 2, y: PITCH_HEIGHT / 2 },
+        position: { x: 52.5, y: 34 },
         velocity: { x: 0, y: 0 },
-        ownerId: null
+        ownerId: 10
     };
 }
 
@@ -208,7 +217,7 @@ function createMatchEngine() {
     const pitchContext = new PitchContext({ width: PITCH_WIDTH, height: PITCH_HEIGHT });
     const tacticalEngine = new TacticalEngine({ pitchContext });
     const behaviorEngine = new PlayerBehaviorEngine();
-    const possessionEngine = new PossessionEngine({ controlRadius: 15 });
+    const possessionEngine = new PossessionEngine({ controlRadius: 12 });
     const possessionStateTransition = new PossessionStateTransition();
     const passTargetSelector = new PassTargetSelector();
     const shotDecisionEngine = new ShotDecisionEngine({ pitchContext });
@@ -252,6 +261,7 @@ function createMatchEngine() {
         tacticalEngine,
         behaviorEngine,
         possessionEngine,
+        possessionStateTransition,
         passTargetSelector,
         shotDecisionEngine,
         decisionEngine,
@@ -317,7 +327,6 @@ function runOnce(runNumber) {
         actualMoveDecisions: 0,
         actualNoneDecisions: 0,
 
-        // ---- YENİ: Possession decision ticks ----
         possessionDecisionTicks: 0,
         possessionPassDecisions: 0,
         possessionShotDecisions: 0,
@@ -490,7 +499,7 @@ function runOnce(runNumber) {
         }
 
         // ----------------------------------------------------
-        // YENİ: POSSESSION DECISION TICKS
+        // POSSESSION DECISION TICKS
         // ----------------------------------------------------
         if (result.possessionSnapshot?.ownerId != null) {
 
@@ -646,7 +655,6 @@ function printSummary(label, stats) {
     process.stdout.write(`Goals detected            : ${stats.goals}\n`);
     process.stdout.write(`Goal transitions          : ${stats.goalTransitions}\n`);
 
-    // ---- YENİ: POSSESSION DECISIONS ----
     process.stdout.write(`\nPOSSESSION DECISIONS\n`);
     process.stdout.write(`Possession decision ticks : ${stats.possessionDecisionTicks}\n`);
     process.stdout.write(`PASS                      : ${stats.possessionPassDecisions}\n`);

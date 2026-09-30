@@ -62,6 +62,9 @@ const PITCH_HEIGHT = 68;
 // İlk PASS'i bulduktan sonra bu kadar fiziksel tick izlenecek.
 const TRACE_TICKS_AFTER_PASS = 40;
 
+// PASS bulunamazsa sonsuz döngüye girmemek için güvenlik sınırı.
+const MAX_TICKS_WITHOUT_PASS = 600;
+
 
 // ============================================================
 // PLAYERS
@@ -166,7 +169,7 @@ function createEngineBundle() {
 
     const possessionEngine =
         new PossessionEngine({
-            controlRadius: 15
+            controlRadius: 12
         });
 
     const possessionStateTransition =
@@ -245,15 +248,22 @@ function createEngineBundle() {
     const initialPlayers =
         createPlayers();
 
+    /*
+     * DEBUG BAŞLANGICI:
+     *
+     * Top #10'a ait. Böylece DecisionEngine'in yeni
+     * "ball.ownerId === player.id" kuralı ilk tick'te
+     * gerçek sahiplik görür ve PASS kararı üretilebilir.
+     */
     const initialBall = {
-        ownerId: null,
+        ownerId: 10,
         velocity: {
             x: 0,
             y: 0
         },
         position: {
-            x: PITCH_WIDTH / 2,
-            y: PITCH_HEIGHT / 2
+            x: 42,
+            y: 25
         }
     };
 
@@ -264,6 +274,7 @@ function createEngineBundle() {
             tacticalEngine,
             behaviorEngine,
             possessionEngine,
+            possessionStateTransition,
             passTargetSelector,
             shotDecisionEngine,
             decisionEngine,
@@ -412,8 +423,14 @@ function runDebug() {
 
     let passFound = false;
     let traceTick = 0;
+    let safetyCounter = 0;
 
-    while (!passFound) {
+    while (
+        !passFound &&
+        safetyCounter < MAX_TICKS_WITHOUT_PASS
+    ) {
+
+        safetyCounter++;
 
         const beforeState =
             simulationCore.state;
@@ -903,6 +920,27 @@ function runDebug() {
                 )
             )}\n`
         );
+    }
+
+
+    // ------------------------------------------------------------
+    // GÜVENLİK: PASS BULUNAMADAN DÖNGÜ BİTTİ
+    // ------------------------------------------------------------
+
+    if (!passFound) {
+
+        process.stdout.write('\n');
+        process.stdout.write(
+            '############################################################\n'
+        );
+        process.stdout.write(
+            'NO PASS FOUND IN 600 TICKS\n'
+        );
+        process.stdout.write(
+            '############################################################\n'
+        );
+
+        process.exit(1);
     }
 
 

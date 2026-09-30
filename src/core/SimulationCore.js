@@ -11,6 +11,7 @@ export class SimulationCore {
         tacticalEngine = null,
         behaviorEngine = null,
         possessionEngine = null,
+        possessionStateTransition = null,
         passTargetSelector = null,
         shotDecisionEngine = null,
         decisionEngine = null,
@@ -33,6 +34,7 @@ export class SimulationCore {
         this.tacticalEngine = tacticalEngine;
         this.behaviorEngine = behaviorEngine;
         this.possessionEngine = possessionEngine;
+        this.possessionStateTransition = possessionStateTransition;
         this.passTargetSelector = passTargetSelector;
         this.shotDecisionEngine = shotDecisionEngine;
         this.decisionEngine = decisionEngine;
@@ -95,6 +97,47 @@ export class SimulationCore {
             this.possessionEngine
                 ? this.possessionEngine.evaluate(currentState)
                 : null;
+
+
+        /*
+         * 3a. POSSESSION STATE TRANSITION
+         *
+         * PossessionStateTransition yalnızca duran top için
+         * gerçek sahipliği başlatabilir.
+         *
+         * Uçan topun sahipliği:
+         *   ReceiverStateTransition
+         *   InterceptionStateTransition
+         *
+         * tarafından belirlenir.
+         */
+        if (
+            possessionSnapshot &&
+            this.possessionStateTransition &&
+            currentState.ball
+        ) {
+            const velocity = currentState.ball.velocity ?? { x: 0, y: 0 };
+
+            const ballSpeed = Math.hypot(
+                velocity.x,
+                velocity.y
+            );
+
+            if (ballSpeed < 0.01) {
+                const nextBall =
+                    this.possessionStateTransition.apply(
+                        currentState.ball,
+                        possessionSnapshot
+                    );
+
+                if (nextBall !== currentState.ball) {
+                    currentState = currentState.nextState(
+                        currentState.players,
+                        nextBall
+                    );
+                }
+            }
+        }
 
 
         /*

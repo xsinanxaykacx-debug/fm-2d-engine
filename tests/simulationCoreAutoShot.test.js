@@ -97,7 +97,7 @@ describe('SimulationCore — Auto Shot', () => {
         });
 
         const possessionEngine = new PossessionEngine({
-            controlRadius: 15
+            controlRadius: 12
         });
 
         const passTargetSelector = new PassTargetSelector();
@@ -317,7 +317,7 @@ describe('SimulationCore — Auto Shot', () => {
             });
 
         const possessionEngine =
-            new PossessionEngine({ controlRadius: 15 });
+            new PossessionEngine({ controlRadius: 12 });
 
         const passTargetSelector =
             new PassTargetSelector();

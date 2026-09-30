@@ -2,7 +2,7 @@
 
 export class PossessionEngine {
     constructor({
-        controlRadius = 15.0
+        controlRadius = 12.0
     } = {}) {
         this.config = Object.freeze({
             controlRadius

@@ -31,7 +31,7 @@ class MatchState {
 
 describe('V3.3 — Possession Engine', () => {
     const possessionEngine = new PossessionEngine({
-        controlRadius: 15.0
+        controlRadius: 12
     });
 
     test('1. Free ball when players are far away', () => {
@@ -55,7 +55,7 @@ describe('V3.3 — Possession Engine', () => {
         expect(snapshot.state).toBe('FREE');
         expect(snapshot.ownerId).toBeNull();
         expect(snapshot.nearestPlayerId).toBe(1);
-        expect(snapshot.distance).toBeGreaterThan(15.0);
+        expect(snapshot.distance).toBeGreaterThan(12);
     });
 
     test('2. Controlled ball when player is within control radius', () => {
@@ -209,7 +209,7 @@ describe('V3.3 — Possession Engine', () => {
         const player = new Player({
             id: 5,
             teamId: 'A',
-            basePosition: { x: 515, y: 300 }
+            basePosition: { x: 512, y: 300 }
         });
 
         const state = new MatchState({
@@ -219,7 +219,7 @@ describe('V3.3 — Possession Engine', () => {
 
         const snapshot = possessionEngine.evaluate(state);
 
-        expect(snapshot.distance).toBe(15);
+        expect(snapshot.distance).toBe(12);
         expect(snapshot.state).toBe('CONTROLLED');
         expect(snapshot.ownerId).toBe(5);
     });
@@ -295,7 +295,7 @@ describe('V3.3 — Possession Engine', () => {
     test('11. eşit mesafedeki oyuncular arasında küçük ID sahibi topa sahip olmalı', () => {
 
         const engine = new PossessionEngine({
-            controlRadius: 15
+            controlRadius: 12
         });
 
         const ball = new Ball({
@@ -332,7 +332,7 @@ describe('V3.3 — Possession Engine', () => {
     test('12. eşit mesafede oyuncu dizisinin sırası sonucu değiştirmemeli', () => {
 
         const engine = new PossessionEngine({
-            controlRadius: 15
+            controlRadius: 12
         });
 
         const ball = new Ball({
@@ -368,4 +368,45 @@ describe('V3.3 — Possession Engine', () => {
         expect(result2.ownerId).toBe(3);
     });
 
+
+    // ------------------------------------------------------------
+    // 13 — DEFAULT CONTROL RADIUS SÖZLEŞMESİ
+    // ------------------------------------------------------------
+
+    test('13. Default controlRadius 12 px sözleşmesi', () => {
+
+        const engine = new PossessionEngine();
+
+        const ball = new Ball({
+            position: { x: 500, y: 300 }
+        });
+
+        // 11.99 px → CONTROLLED
+        const playerInside = new Player({
+            id: 5,
+            teamId: 'A',
+            basePosition: { x: 511.99, y: 300 }
+        });
+
+        const insideSnapshot = engine.evaluate(
+            new MatchState({ players: [playerInside], ball })
+        );
+
+        expect(insideSnapshot.state).toBe('CONTROLLED');
+        expect(insideSnapshot.ownerId).toBe(5);
+
+        // 12.01 px → FREE
+        const playerOutside = new Player({
+            id: 6,
+            teamId: 'A',
+            basePosition: { x: 512.01, y: 300 }
+        });
+
+        const outsideSnapshot = engine.evaluate(
+            new MatchState({ players: [playerOutside], ball })
+        );
+
+        expect(outsideSnapshot.state).toBe('FREE');
+        expect(outsideSnapshot.ownerId).toBeNull();
+    });
 });

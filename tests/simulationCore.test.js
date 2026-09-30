@@ -287,7 +287,7 @@ describe('SimulationCore — Engine Integration', () => {
                 ballInfluenceDistance: 1000, pressDistance: 50,
                 supportDistance: 180, forwardRunDistance: 120
             }),
-            possessionEngine: new PossessionEngine({ controlRadius: 15 }),
+            possessionEngine: new PossessionEngine({ controlRadius: 12 }),
             passTargetSelector: new PassTargetSelector(),
             decisionEngine: new DecisionEngine(),
             passExecutor: new PassExecutor({
@@ -377,7 +377,7 @@ describe('SimulationCore — Engine Integration', () => {
                 ballInfluenceDistance: 1000, pressDistance: 50,
                 supportDistance: 180, forwardRunDistance: 120
             }),
-            possessionEngine: new PossessionEngine({ controlRadius: 15 }),
+            possessionEngine: new PossessionEngine({ controlRadius: 12 }),
             passTargetSelector: new PassTargetSelector(),
             decisionEngine: new DecisionEngine(),
             passExecutor: new PassExecutor({

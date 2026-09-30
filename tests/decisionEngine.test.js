@@ -15,7 +15,8 @@ describe('DecisionEngine', () => {
     function createState({
         playerPosition = { x: 100, y: 100 },
         playerRole = 'CM',
-        playerTeam = 'A'
+        playerTeam = 'A',
+        ballOwnerId = null
     } = {}) {
 
         return {
@@ -39,7 +40,8 @@ describe('DecisionEngine', () => {
                 position: {
                     x: 500,
                     y: 300
-                }
+                },
+                ownerId: ballOwnerId
             }
         };
     }
@@ -476,7 +478,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
 
         const tacticalSnapshots = createTacticalSnapshot();
 
@@ -509,11 +511,43 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: null });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
             ownerId: 99,
+            nearestOpponentId: 99,
+            nearestOpponentDistance: 30
+        });
+
+        const passTargets = createPassTargets([10]);
+
+        const result = engine.evaluate(
+            state,
+            tacticalSnapshots,
+            [],
+            possessionSnapshot,
+            passTargets
+        );
+
+        expect(result[0].action).not.toBe(Actions.PASS);
+        expect(result[0].receiverId).toBeUndefined();
+    });
+
+
+    // ------------------------------------------------------------
+    // 14b — SANAL POSSESSION PASS ÜRETMEMELİ
+    // ------------------------------------------------------------
+
+    it('snapshot.ownerId ≠ ball.ownerId ise PASS üretmemeli', () => {
+
+        const engine = new DecisionEngine();
+
+        const state = createState({ ballOwnerId: null });
+        const tacticalSnapshots = createTacticalSnapshot();
+
+        const possessionSnapshot = createPossessionSnapshot({
+            ownerId: 1,
             nearestOpponentId: 99,
             nearestOpponentDistance: 30
         });
@@ -541,7 +575,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -570,7 +604,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -601,7 +635,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -632,7 +666,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -663,7 +697,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -721,7 +755,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -752,7 +786,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const behaviorSnapshots = createBehaviorSnapshot({
@@ -788,7 +822,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot({
             tacticalTarget: { x: 300, y: 300 }
         });
@@ -979,7 +1013,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -1021,7 +1055,7 @@ describe('DecisionEngine', () => {
 
         const engine = new DecisionEngine();
 
-        const state = createState();
+        const state = createState({ ballOwnerId: 1 });
         const tacticalSnapshots = createTacticalSnapshot();
 
         const possessionSnapshot = createPossessionSnapshot({
@@ -1116,7 +1150,10 @@ describe('DecisionEngine', () => {
                     position: { x: 200, y: 200 }
                 }
             ],
-            ball: { position: { x: 500, y: 300 } }
+            ball: {
+                position: { x: 500, y: 300 },
+                ownerId: null
+            }
         };
 
         const tacticalSnapshots = [
