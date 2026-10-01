@@ -257,7 +257,11 @@ function shoot(carrier){
 }
 
 function executePlayerDecision(p,decision){
+ if(!p.brain)p.brain={passTarget:null,passWait:0};
+
  if(decision.type==="SHOT"&&shotCooldown<=0){
+  p.brain.passTarget=null;
+  p.brain.passWait=0;
   shoot(p);
   lastAction="#"+p.id+" DÜŞÜNDÜ → ŞUT";
   return true;
@@ -267,55 +271,69 @@ function executePlayerDecision(p,decision){
   const receiver=player(decision.target);
 
   if(receiver){
-   // Oyuncu PAS seçtiyse karar bozulup otomatik SÜR'e dönmez.
-   // Pas cooldown'ı dolana kadar baskıdan çıkacak küçük bir konum değişikliği yapar.
-   if(passCooldown<=0){
+   if(p.brain.passTarget===receiver.id)p.brain.passWait++;
+   else{
+    p.brain.passTarget=receiver.id;
+    p.brain.passWait=1;
+   }
+
+   // Aynı pas kararı birkaç tick üst üste sürüyorsa oyuncu kararını
+   // uygulamaya zorlar. Oyuncu sonsuza kadar köşeye çekilip pas beklemez.
+   const forcedPass=p.brain.passWait>=5;
+
+   if(passCooldown<=0||forcedPass){
     passTo(p,receiver);
+    p.brain.passTarget=null;
+    p.brain.passWait=0;
     lastAction="#"+p.id+" DÜŞÜNDÜ → PAS #"+receiver.id;
     return true;
    }
 
-   const dir=p.team==="HOME"?1:-1;
    const opp=nearestOpponent(p);
-   const dx=receiver.x-p.x;
-   const dy=receiver.y-p.y;
+   let tx=p.x,ty=p.y;
 
-   // Rakip baskısından uzaklaş; aynı zamanda alıcıyla görüş hattını koru.
-   let tx=p.x;
-   let ty=p.y;
-
+   // Önce saha içinde kal. Baskıdan kaçarken kale çizgisine yapışma.
    if(opp.p&&opp.d<9){
     const awayX=p.x-(opp.p.x-p.x)*0.55;
     const awayY=p.y-(opp.p.y-p.y)*0.55;
+
     tx=awayX;
     ty=awayY;
+
+    // Hücum yönüne küçük bir düzeltme: kendi kalesine doğru sürekli kaçış yok.
+    const dir=p.team==="HOME"?1:-1;
+    tx+=dir*0.8;
    }else{
-    tx=p.x+clamp(dx*0.18,-1.5,1.5);
-    ty=p.y+clamp(dy*0.18,-2.0,2.0);
+    tx=p.x+clamp((receiver.x-p.x)*0.12,-1.0,1.0);
+    ty=p.y+clamp((receiver.y-p.y)*0.12,-1.5,1.5);
    }
 
-   tx=clamp(tx,3,102);
-   ty=clamp(ty,3,65);
-   moveToward(p,tx,ty,4.8);
+   tx=clamp(tx,5,100);
+   ty=clamp(ty,5,63);
+
+   moveToward(p,tx,ty,4.2);
    updateOwnedBall();
-   lastAction="#"+p.id+" PASI BEKLİYOR → #"+receiver.id;
+   lastAction="#"+p.id+" PASI HAZIRLIYOR → #"+receiver.id;
    return true;
   }
  }
 
- // Ancak gerçekten PAS/ŞUT seçilmemişse sür.
+ p.brain.passTarget=null;
+ p.brain.passWait=0;
+
+ // PAS/ŞUT seçilmemişse sür.
  const dir=p.team==="HOME"?1:-1;
  const opp=nearestOpponent(p);
  let tx=p.x+dir*4.2,ty=p.y;
 
  if(opp.p&&opp.d<8){
-  const escape= p.y<=opp.p.y ? -1 : 1;
+  const escape=p.y<=opp.p.y?-1:1;
   ty=p.y+escape*5.5;
   tx=p.x+dir*1.2;
  }
 
- tx=clamp(tx,3,102);
- ty=clamp(ty,3,65);
+ tx=clamp(tx,5,100);
+ ty=clamp(ty,5,63);
 
  moveToward(p,tx,ty,6.8);
  updateOwnedBall();
