@@ -40,10 +40,10 @@ let passCooldown=0,shotCooldown=0;
 
 function makePlayers(){
  players=[
-  {id:1,team:"HOME",role:"A",x:32,y:30,bx:32,by:30,vx:0,vy:0},
-  {id:2,team:"HOME",role:"B",x:32,y:38,bx:32,by:38,vx:0,vy:0},
-  {id:3,team:"AWAY",role:"A",x:73,y:38,bx:73,by:38,vx:0,vy:0},
-  {id:4,team:"AWAY",role:"B",x:73,y:30,bx:73,by:30,vx:0,vy:0}
+  {id:1,team:"HOME",role:"A",x:32,y:30,bx:32,by:30,vx:0,vy:0,attributes:{vision:90,passing:88,decision:92,dribbling:65,finishing:70,courage:75,composure:88}},
+  {id:2,team:"HOME",role:"B",x:32,y:38,bx:32,by:38,vx:0,vy:0,attributes:{vision:65,passing:68,decision:60,dribbling:84,finishing:82,courage:86,composure:72}},
+  {id:3,team:"AWAY",role:"A",x:73,y:38,bx:73,by:38,vx:0,vy:0,attributes:{vision:84,passing:82,decision:86,dribbling:70,finishing:76,courage:72,composure:84}},
+  {id:4,team:"AWAY",role:"B",x:73,y:30,bx:73,by:30,vx:0,vy:0,attributes:{vision:62,passing:64,decision:58,dribbling:88,finishing:80,courage:90,composure:70}}
  ];
 }
 
@@ -78,153 +78,175 @@ function nearestMate(p){
  return {p:best,d:bd};
 }
 
-function evaluatePass(carrier){
- const mate=nearestMate(carrier).p;
- if(!mate)return {score:0,receiver:null};
- const dir=carrier.team==="HOME"?1:-1;
- const d=dist(carrier,mate);
- if(d>32)return {score:0,receiver:null};
+function perceivePlayer(p){
+ const dir=p.team==="HOME"?1:-1,goalX=p.team==="HOME"?105:0;
+ const opp=nearestOpponent(p),mate=nearestMate(p);
+ const visibleOpponents=players.filter(q=>q.team!==p.team&&dist(p,q)<32);
+ const visibleMates=teamPlayers(p.team).filter(q=>q.id!==p.id&&dist(p,q)<35);
 
- const receiverPressure=nearestOpponent(mate).d;
- const forward=(mate.x-carrier.x)*dir;
- const goalX=carrier.team==="HOME"?105:0;
- const receiverGoalDist=Math.abs(goalX-mate.x);
+ const teammates=visibleMates.map(m=>{
+  const md=nearestOpponent(m).d;
+  const forward=(m.x-p.x)*dir;
+  return {
+   playerId:m.id,
+   distance:dist(p,m),
+   forward,
+   pressure:md,
+   visibility:clamp(100-dist(p,m)*2.2,15,100),
+   passSafety:clamp(md*9,0,100),
+   attackingValue:clamp(50+forward*5+(goalX===105?105-m.x:m.x)*-0.7,0,100)
+  };
+ });
 
- // Pasın önündeki koridor: taşıyıcı ile alıcı arasındaki hatta rakip var mı?
- let laneRisk=0;
- for(const opp of players){
-  if(opp.team===carrier.team)continue;
-  const ax=carrier.x,ay=carrier.y,bx=mate.x,by=mate.y;
-  const abx=bx-ax,aby=by-ay,len2=abx*abx+aby*aby;
-  if(len2<0.01)continue;
-  const t=clamp(((opp.x-ax)*abx+(opp.y-ay)*aby)/len2,0,1);
-  const px=ax+abx*t,py=ay+aby*t;
-  const laneDist=Math.hypot(opp.x-px,opp.y-py);
-  if(laneDist<3.5)laneRisk=Math.max(laneRisk,1-(laneDist/3.5));
- }
-
- const distanceScore=clamp(100-Math.abs(d-13)*4,20,100);
- const pressureScore=clamp(receiverPressure*7,0,100);
- const forwardScore=clamp(50+forward*5,0,100);
- const goalScore=clamp(100-receiverGoalDist*1.7,0,100);
- const laneScore=100-laneRisk*80;
-
- let score=distanceScore*.15+pressureScore*.30+forwardScore*.22+goalScore*.13+laneScore*.20;
-
- // Çok yakın baskıda açık takım arkadaşına pas ciddi öncelik kazanır.
- const carrierPressure=nearestOpponent(carrier).d;
- if(carrierPressure<7)score+=18;
- if(forward<-10 && receiverPressure<7)score-=25;
- if(receiverPressure<3)score-=20;
-
- return {score:clamp(score,0,100),receiver:mate};
-}
-
-function passTo(carrier,receiver){
- if(!receiver)return false;
- const dir=carrier.team==="HOME"?1:-1;
-
- // Oyuncunun mevcut konumuna değil, hafifçe ileri koşu yönüne pas ver.
- const lead=Math.min(4.5,dist(carrier,receiver)*.22);
- const tx=clamp(receiver.x+dir*lead,3,102);
- const ty=clamp(receiver.y,3,65);
- const dx=tx-carrier.x,dy=ty-carrier.y,d=Math.hypot(dx,dy)||1;
-
- ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;
- ball.vx=dx/d*18;ball.vy=dy/d*18;
- ball.targetId=receiver.id;ball.passTeam=carrier.team;ball.passerId=carrier.id;
- lastAction="PAS #"+carrier.id+" → #"+receiver.id;
- passCooldown=.8;
- return true;
-}
-
-function evaluateShot(carrier){
- const dir=carrier.team==="HOME"?1:-1;
- const goalX=carrier.team==="HOME"?105:0;
- const goalDist=Math.abs(goalX-carrier.x);
- const opp=nearestOpponent(carrier);
-
- // Şut yalnızca mesafeye değil, baskıya ve kaleye göre açılan hatta bağlı.
- const distanceScore=clamp(100-(goalDist-8)*4.2,0,100);
- const pressureScore=clamp((opp.d-3)*12,0,100);
-
- let laneRisk=0;
- for(const defender of players){
-  if(defender.team===carrier.team)continue;
-  const goalY=34;
-  const ax=carrier.x,ay=carrier.y,bx=goalX,by=goalY;
-  const abx=bx-ax,aby=by-ay,len2=abx*abx+aby*aby;
-  if(len2<0.01)continue;
-  const t=clamp(((defender.x-ax)*abx+(defender.y-ay)*aby)/len2,0,1);
-  const px=ax+abx*t,py=ay+aby*t;
-  const laneDist=Math.hypot(defender.x-px,defender.y-py);
-  if(laneDist<5)laneRisk=Math.max(laneRisk,1-laneDist/5);
- }
-
- const laneScore=100-laneRisk*75;
- const angleScore=clamp(100-Math.abs(carrier.y-34)*5,25,100);
- let score=distanceScore*.48+pressureScore*.22+laneScore*.20+angleScore*.10;
-
- if(goalDist>30)score-=35;
- if(goalDist<16)score+=15;
- return clamp(score,0,100);
-}
-
-function evaluateDribble(carrier){
- const dir=carrier.team==="HOME"?1:-1;
- const opp=nearestOpponent(carrier);
- const frontX=carrier.x+dir*8;
- const sideY=carrier.y+(carrier.y<34?5:-5);
-
- let frontSpace=100;
- for(const defender of players){
-  if(defender.team===carrier.team)continue;
-  const forwardGap=(defender.x-carrier.x)*dir;
-  const lateralGap=Math.abs(defender.y-carrier.y);
-  if(forwardGap>0 && forwardGap<12 && lateralGap<7){
-   frontSpace=Math.min(frontSpace,clamp((forwardGap/12)*100,0,100));
+ let forwardSpace=100;
+ for(const q of visibleOpponents){
+  const forward=(q.x-p.x)*dir;
+  const lateral=Math.abs(q.y-p.y);
+  if(forward>0&&forward<14&&lateral<8){
+   forwardSpace=Math.min(forwardSpace,clamp(forward/14*100,0,100));
   }
  }
 
- const pressure=clamp(opp.d*10,0,100);
- const forwardValue=carrier.team==="HOME"?carrier.x:(105-carrier.x);
- let score=frontSpace*.55+pressure*.25+clamp(forwardValue*1.2,0,100)*.20;
+ const goalDist=Math.abs(goalX-p.x);
+ const shotAngle=clamp(100-Math.abs(p.y-34)*4.8,20,100);
 
- if(opp.d<5)score-=35;
- if(opp.d<8)score-=18;
- return clamp(score,0,100);
+ return {
+  pressure:clamp((12-opp.d)*8,0,100),
+  nearestOpponent:opp.p?opp.p.id:null,
+  opponentDistance:opp.d,
+  forwardSpace,
+  goalDistance:goalDist,
+  shotAngle,
+  teammates,
+  visibleOpponents:visibleOpponents.map(q=>({id:q.id,distance:dist(p,q)})),
+  dangerBehind:clamp((8-((p.x-(p.team==="HOME"?3:102))*dir))*8,0,100)
+ };
 }
 
-function decideWithBall(carrier){
- const shot=evaluateShot(carrier);
- const pass=evaluatePass(carrier);
- const dribble=evaluateDribble(carrier);
+function thinkPlayer(p,perception){
+ const attributes=p.attributes||{vision:70,passing:70,decision:70,dribbling:70,finishing:70,courage:70,composure:70};
+ const pressure=perception.pressure;
 
- const options=[
-  {type:"ŞUT",score:shot},
-  {type:"PAS",score:pass.score,receiver:pass.receiver},
-  {type:"SÜR",score:dribble}
- ].sort((a,b)=>b.score-a.score);
+ const options=perception.teammates.map(m=>{
+  let laneRisk=0;
+  const receiver=player(m.playerId);
+  if(receiver){
+   for(const q of players){
+    if(q.team===p.team)continue;
+    const ax=p.x,ay=p.y,bx=receiver.x,by=receiver.y;
+    const abx=bx-ax,aby=by-ay,len2=abx*abx+aby*aby;
+    if(len2<.01)continue;
+    const t=clamp(((q.x-ax)*abx+(q.y-ay)*aby)/len2,0,1);
+    const px=ax+abx*t,py=ay+aby*t;
+    const ld=Math.hypot(q.x-px,q.y-py);
+    if(ld<4)laneRisk=Math.max(laneRisk,1-ld/4);
+   }
+  }
+
+  const visionBonus=attributes.vision*.18;
+  const decisionBonus=attributes.decision*.18;
+  const safety=m.passSafety*.35;
+  const forward=clamp(50+m.forward*4,0,100)*.18;
+  const attacking=m.attackingValue*.11;
+  const lane=(100-laneRisk*85)*.16;
+
+  return {
+   type:"PASS",
+   target:m.playerId,
+   score:clamp(visionBonus+decisionBonus+safety+forward+attacking+lane,0,100),
+   reason:m.pressure>70?"ARKADAŞ AÇIK":m.forward>5?"İLERİ PAS":"GÜVENLİ PAS"
+  };
+ });
+
+ const shotSpace=clamp(100-perception.opponentDistance*7,0,100);
+ const shot={
+  type:"SHOT",
+  score:clamp(
+   (clamp(100-(perception.goalDistance-8)*4.5,0,100)*.42)+
+   (perception.shotAngle*.18)+
+   (shotSpace*.15)+
+   (attributes.finishing*.15)+
+   (attributes.composure*.10),
+   0,100
+  ),
+  reason:"ŞUT AÇISI VE MESAFE"
+ };
+
+ const dribble={
+  type:"DRIBBLE",
+  score:clamp(
+   perception.forwardSpace*.38+
+   clamp(perception.opponentDistance*8,0,100)*.22+
+   attributes.dribbling*.20+
+   attributes.courage*.10+
+   attributes.decision*.10,
+   0,100
+  ),
+  reason:perception.forwardSpace>65?"ÖNÜ AÇIK":"BİRE BİR FIRSATI"
+ };
+
+ return {passes:options,shot,dribble};
+}
+
+function decidePlayer(p,thought){
+ const options=[...thought.passes,thought.shot,thought.dribble]
+  .filter(o=>o.score>=0)
+  .sort((a,b)=>b.score-a.score);
+
+ if(!options.length)return {type:"DRIBBLE",score:0,reason:"VARSAYILAN"};
 
  const best=options[0],second=options[1];
 
- // Yakın skorlar arasında küçük varyasyon; kararın kendisi rastgele değildir.
- if(second && best.score-second.score<5 && Math.random()<.15){
-  return second;
+ // Oyuncu düşünür; tamamen deterministik değil ama karar rastgele değildir.
+ const uncertainty=Math.max(0,(100-(p.attributes?.decision||70))/100);
+ if(second&&best.score-second.score<4&&Math.random()<.10+uncertainty*.15){
+  return {...second,confidence:Math.round(second.score)};
  }
- return best;
+ return {...best,confidence:Math.round(best.score)};
 }
 
-function pass(carrier){
- const decision=evaluatePass(carrier);
- return decision.receiver?passTo(carrier,decision.receiver):false;
+function executePlayerDecision(p,decision){
+ if(decision.type==="SHOT"&&shotCooldown<=0){
+  shoot(p);
+  lastAction="#"+p.id+" DÜŞÜNDÜ → ŞUT";
+  return true;
+ }
+ if(decision.type==="PASS"&&passCooldown<=0&&decision.target){
+  const receiver=player(decision.target);
+  if(receiver){
+   passTo(p,receiver);
+   lastAction="#"+p.id+" DÜŞÜNDÜ → PAS #"+receiver.id;
+   return true;
+  }
+ }
+
+ const dir=p.team==="HOME"?1:-1;
+ const opp=nearestOpponent(p);
+ let tx=p.x+dir*4.2,ty=p.y;
+ if(opp.d<8)ty=p.y+(p.y<34?4.5:-4.5);
+ moveToward(p,tx,ty,6.8);
+ updateOwnedBall();
+ lastAction="#"+p.id+" DÜŞÜNDÜ → SÜR";
+ return true;
 }
 
-function shoot(carrier){
- const gx=carrier.team==="HOME"?105:0,gy=34+(Math.random()-.5)*5;
- const dx=gx-carrier.x,dy=gy-carrier.y,d=Math.hypot(dx,dy)||1;
- ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;ball.vx=dx/d*23;ball.vy=dy/d*23;ball.targetId=null;ball.passTeam=carrier.team;ball.passerId=carrier.id;
- lastAction="ŞUT #"+carrier.id;shotCooldown=1.4;passCooldown=.6;
+function updateCarrier(){
+ if(ball.owner==null)return;
+ const p=player(ball.owner);if(!p){ball.owner=null;return}
+
+ const perception=perceivePlayer(p);
+ const thought=thinkPlayer(p,perception);
+ const decision=decidePlayer(p,thought);
+
+ // Karar bilgisi oyuncunun zihinsel durumunu görünür kılar.
+ p.lastThought={
+  perception,
+  thought,
+  decision,
+  tick:tickCount
+ };
+
+ executePlayerDecision(p,decision);
 }
 
 function updatePlayers(){
@@ -390,7 +412,24 @@ function updateUI(){
  const s=Math.hypot(ball.vx,ball.vy);
  scoreEl.textContent=homeScore+" - "+awayScore;tickEl.textContent=String(tickCount);ownerEl.textContent=ball.owner==null?"SAHİPSİZ":"#"+ball.owner;speedEl.textContent=s.toFixed(1);actionEl.textContent=lastAction;
  const op=ball.owner?player(ball.owner):null;
- logEl.textContent=["Oyun süresi: "+Math.floor(clock/60)+":"+String(Math.floor(clock%60)).padStart(2,"0"),"Top: "+(ball.owner==null?"SERBEST":"#"+ball.owner+" "+(op?op.team:"")),"Top: "+ball.x.toFixed(1)+", "+ball.y.toFixed(1),"Aksiyon: "+lastAction,lastEvent||""].filter(Boolean).join("\n");
+ const mental=op?.lastThought;
+const mentalLines=mental?[
+ "DÜŞÜNCE:",
+ "  Baskı: "+mental.perception.pressure.toFixed(0),
+ "  Ön alan: "+mental.perception.forwardSpace.toFixed(0),
+ "  Kaleye: "+mental.perception.goalDistance.toFixed(1),
+ "  Karar: "+mental.decision.type+(mental.decision.target?" #"+mental.decision.target:""),
+ "  Güven: %"+mental.decision.confidence,
+ "  Neden: "+mental.decision.reason
+]:[];
+logEl.textContent=[
+ "Oyun süresi: "+Math.floor(clock/60)+":"+String(Math.floor(clock%60)).padStart(2,"0"),
+ "Top: "+(ball.owner==null?"SERBEST":"#"+ball.owner+" "+(op?op.team:"")),
+ "Top: "+ball.x.toFixed(1)+", "+ball.y.toFixed(1),
+ "Aksiyon: "+lastAction,
+ ...mentalLines,
+ lastEvent||""
+].filter(Boolean).join("\n");
 }
 function fail(e){stop();errorEl.style.display="block";errorEl.textContent=e?.stack||String(e);console.error(e)}
 function clearError(){errorEl.style.display="none";errorEl.textContent=""}
