@@ -165,7 +165,15 @@ function updateCarrier(){
  if(goalDist<22 && shotCooldown<=0 && opp.d>4){shoot(p);return}
  if(passCooldown<=0 && (opp.d<10 || Math.random()<.035)){if(pass(p))return}
  let tx=p.x+dir*3.5,ty=p.y;
- if(opp.d<6){tx=p.x-dir*3;ty=p.y+(p.y<34?3:-3)}
+ // Baskı altında geriye, kendi kaleye dönme. İleri + yana kaç.
+ if(opp.d<7){
+   tx=p.x+dir*4.5;
+   ty=p.y+(p.y<34?4.5:-4.5);
+ }
+ // Çok yakın baskıda önce pas ara; top taşıyıcı kendi kalesine geri sürülmez.
+ if(opp.d<9 && passCooldown<=0){
+   if(pass(p)){return}
+ }
  moveToward(p,tx,ty,6.8);updateOwnedBall();
 }
 
