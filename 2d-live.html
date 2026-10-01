@@ -296,47 +296,6 @@ function separate(){
  }
 }
 
-function updateCarrier(){
- if(ball.owner==null)return;
- const p=player(ball.owner);if(!p){ball.owner=null;return}
-
- // Futbolun merkezindeki karar: ŞUT / PAS / SÜR.
- // Her tick'te rastgele aksiyon değil, mevcut oyun durumuna göre skorlanmış karar.
- if(passCooldown<=0 || shotCooldown<=0){
-  const decision=decideWithBall(p);
-
-  if(decision.type==="ŞUT" && shotCooldown<=0){
-   shoot(p);return;
-  }
-
-  if(decision.type==="PAS" && passCooldown<=0 && decision.receiver){
-   passTo(p,decision.receiver);return;
-  }
-
-  if(decision.type==="SÜR"){
-   const dir=p.team==="HOME"?1:-1;
-   const opp=nearestOpponent(p);
-   let tx=p.x+dir*4.2;
-   let ty=p.y;
-
-   // Baskıda geri dönme yok: ileri + boş kanala kaç.
-   if(opp.d<8)ty=p.y+(p.y<34?4.5:-4.5);
-   moveToward(p,tx,ty,6.8);
-   updateOwnedBall();
-   return;
-  }
-
-  // En iyi seçenek cooldown yüzünden kullanılamıyorsa topu ileri taşı.
-  const dir=p.team==="HOME"?1:-1;
-  moveToward(p,p.x+dir*2.5,p.y,6.4);
-  updateOwnedBall();
-  return;
- }
-
- const dir=p.team==="HOME"?1:-1;
- moveToward(p,p.x+dir*3,p.y,6.4);
- updateOwnedBall();
-}
 
 function updateOwnedBall(){
  if(ball.owner!=null){const p=player(ball.owner);if(p){ball.x=p.x;ball.y=p.y;ball.vx=0;ball.vy=0}}
