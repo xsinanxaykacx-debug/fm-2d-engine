@@ -304,8 +304,7 @@ function updateUI(){
    "Hız: "+s.toFixed(1),
    "Aksiyon: "+lastAction,
    lastEvent||""
- ].filter(Boolean).join("
-");
+ ].filter(Boolean).join("\n");
 }
 function fail(e){stop();errorEl.style.display="block";errorEl.textContent=e?.stack||String(e);console.error(e)}
 function clearError(){errorEl.style.display="none";errorEl.textContent=""}
