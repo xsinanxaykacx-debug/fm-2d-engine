@@ -246,25 +246,48 @@ function executePlayerDecision(p,decision){
   lastAction="#"+p.id+" DÜŞÜNDÜ → ŞUT";
   return true;
  }
- if(decision.type==="PASS"&&passCooldown<=0&&decision.target){
+
+ if(decision.type==="PASS"&&decision.target){
   const receiver=player(decision.target);
   if(receiver){
-   passTo(p,receiver);
-   lastAction="#"+p.id+" DÜŞÜNDÜ → PAS #"+receiver.id;
+   // Pas kararı verildiyse topu anlamsız yere sürmek yerine
+   // pas penceresinin açılmasını beklerken pas koridoruna yaklaş.
+   if(passCooldown<=0){
+    passTo(p,receiver);
+    lastAction="#"+p.id+" DÜŞÜNDÜ → PAS #"+receiver.id;
+    return true;
+   }
+
+   const dir=p.team==="HOME"?1:-1;
+   const laneY=receiver.y+(receiver.y<p.y?3:-3);
+   moveToward(p,clamp(p.x+dir*1.8,3,102),clamp(laneY,3,65),5.2);
+   updateOwnedBall();
+   lastAction="#"+p.id+" PAS PENCERESİ ARIYOR → #"+receiver.id;
    return true;
   }
  }
 
  const dir=p.team==="HOME"?1:-1;
  const opp=nearestOpponent(p);
+
+ // Baskı altındaki oyuncu doğrudan rakibe doğru koşmaz.
+ // Önce rakipten uzaklaşıp pas açısı yaratır.
  let tx=p.x+dir*4.2,ty=p.y;
- if(opp.d<8)ty=p.y+(p.y<34?4.5:-4.5);
+ if(opp.d<8){
+  const escape=opp.p ? (p.y<=opp.p.y?-1:1) : 1;
+  ty=p.y+escape*5.5;
+  tx=p.x+dir*2.0;
+ }
+
+ // Rakip kale yönünde saha dışına çıkmayı engelle.
+ tx=clamp(tx,3,102);
+ ty=clamp(ty,3,65);
+
  moveToward(p,tx,ty,6.8);
  updateOwnedBall();
  lastAction="#"+p.id+" DÜŞÜNDÜ → SÜR";
  return true;
 }
-
 function updateCarrier(){
  if(ball.owner==null)return;
  const p=player(ball.owner);if(!p){ball.owner=null;return}
@@ -296,7 +319,16 @@ function updatePlayers(){
     // Hücum destek açısı: top sahibinden uzaklaşıp pas koridoru aç.
     tx=mate.x+dir*7;
     ty=p.by<34?mate.y-7:mate.y+7;
-    if(d<7){tx+=dir*4;ty+=p.by<34?-3:3}
+
+    // Hücum oyuncusu rakip yarı sahaya yaklaşınca destek oyuncusu
+    // top sahibinin arkasına değil, pas açısına çıkar.
+    if((mate.team==="HOME"&&mate.x>58)||(mate.team==="AWAY"&&mate.x<47)){
+      tx=mate.x-dir*2;
+      ty=mate.y+(p.by<34?-8:8);
+    }
+
+    tx=clamp(tx,3,102);
+    ty=clamp(ty,3,65);
   }else if(bp && bp.team!==p.team){
     const opp=bp,d=dist(p,opp);
     // En yakın savunmacı baskı yapar, diğeri pas yolunu kapatır.
