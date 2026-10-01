@@ -205,6 +205,41 @@ function decidePlayer(p,thought){
  return {...best,confidence:Math.round(best.score)};
 }
 
+function passTo(carrier,receiver){
+ if(!carrier||!receiver)return false;
+ const dir=carrier.team==="HOME"?1:-1;
+ const lead=Math.min(4.5,dist(carrier,receiver)*0.22);
+ const tx=clamp(receiver.x+dir*lead,3,102);
+ const ty=clamp(receiver.y,3,65);
+ const dx=tx-carrier.x,dy=ty-carrier.y,d=Math.hypot(dx,dy)||1;
+ ball.owner=null;
+ ball.x=carrier.x;ball.y=carrier.y;
+ ball.vx=dx/d*18;ball.vy=dy/d*18;
+ ball.targetId=receiver.id;
+ ball.passTeam=carrier.team;
+ ball.passerId=carrier.id;
+ passCooldown=0.8;
+ lastAction="PAS #"+carrier.id+" → #"+receiver.id;
+ return true;
+}
+
+function shoot(carrier){
+ if(!carrier)return false;
+ const gx=carrier.team==="HOME"?105:0;
+ const gy=34+(Math.random()-0.5)*5;
+ const dx=gx-carrier.x,dy=gy-carrier.y,d=Math.hypot(dx,dy)||1;
+ ball.owner=null;
+ ball.x=carrier.x;ball.y=carrier.y;
+ ball.vx=dx/d*23;ball.vy=dy/d*23;
+ ball.targetId=null;
+ ball.passTeam=carrier.team;
+ ball.passerId=carrier.id;
+ shotCooldown=1.4;
+ passCooldown=0.6;
+ lastAction="ŞUT #"+carrier.id;
+ return true;
+}
+
 function executePlayerDecision(p,decision){
  if(decision.type==="SHOT"&&shotCooldown<=0){
   shoot(p);
