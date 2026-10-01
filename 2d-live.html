@@ -78,27 +78,146 @@ function nearestMate(p){
  return {p:best,d:bd};
 }
 
-function choosePass(carrier){
+function evaluatePass(carrier){
  const mate=nearestMate(carrier).p;
- if(!mate)return null;
+ if(!mate)return {score:0,receiver:null};
+ const dir=carrier.team==="HOME"?1:-1;
+ const d=dist(carrier,mate);
+ if(d>32)return {score:0,receiver:null};
+
+ const receiverPressure=nearestOpponent(mate).d;
+ const forward=(mate.x-carrier.x)*dir;
  const goalX=carrier.team==="HOME"?105:0;
- const forward=(mate.x-carrier.x)*(carrier.team==="HOME"?1:-1);
- const opp=nearestOpponent(mate).d;
- const distToMate=dist(carrier,mate);
- if(distToMate>30)return null;
- if(forward<-8 && opp>8)return null;
- return mate;
+ const receiverGoalDist=Math.abs(goalX-mate.x);
+
+ // Pasın önündeki koridor: taşıyıcı ile alıcı arasındaki hatta rakip var mı?
+ let laneRisk=0;
+ for(const opp of players){
+  if(opp.team===carrier.team)continue;
+  const ax=carrier.x,ay=carrier.y,bx=mate.x,by=mate.y;
+  const abx=bx-ax,aby=by-ay,len2=abx*abx+aby*aby;
+  if(len2<0.01)continue;
+  const t=clamp(((opp.x-ax)*abx+(opp.y-ay)*aby)/len2,0,1);
+  const px=ax+abx*t,py=ay+aby*t;
+  const laneDist=Math.hypot(opp.x-px,opp.y-py);
+  if(laneDist<3.5)laneRisk=Math.max(laneRisk,1-(laneDist/3.5));
+ }
+
+ const distanceScore=clamp(100-Math.abs(d-13)*4,20,100);
+ const pressureScore=clamp(receiverPressure*7,0,100);
+ const forwardScore=clamp(50+forward*5,0,100);
+ const goalScore=clamp(100-receiverGoalDist*1.7,0,100);
+ const laneScore=100-laneRisk*80;
+
+ let score=distanceScore*.15+pressureScore*.30+forwardScore*.22+goalScore*.13+laneScore*.20;
+
+ // Çok yakın baskıda açık takım arkadaşına pas ciddi öncelik kazanır.
+ const carrierPressure=nearestOpponent(carrier).d;
+ if(carrierPressure<7)score+=18;
+ if(forward<-10 && receiverPressure<7)score-=25;
+ if(receiverPressure<3)score-=20;
+
+ return {score:clamp(score,0,100),receiver:mate};
 }
 
-function pass(carrier){
- const receiver=choosePass(carrier);
+function passTo(carrier,receiver){
  if(!receiver)return false;
- const dx=receiver.x-carrier.x,dy=receiver.y-carrier.y,d=Math.hypot(dx,dy)||1;
+ const dir=carrier.team==="HOME"?1:-1;
+
+ // Oyuncunun mevcut konumuna değil, hafifçe ileri koşu yönüne pas ver.
+ const lead=Math.min(4.5,dist(carrier,receiver)*.22);
+ const tx=clamp(receiver.x+dir*lead,3,102);
+ const ty=clamp(receiver.y,3,65);
+ const dx=tx-carrier.x,dy=ty-carrier.y,d=Math.hypot(dx,dy)||1;
+
  ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;
  ball.vx=dx/d*18;ball.vy=dy/d*18;
  ball.targetId=receiver.id;ball.passTeam=carrier.team;ball.passerId=carrier.id;
- lastAction="PAS #"+carrier.id+" → #"+receiver.id;passCooldown=.8;
+ lastAction="PAS #"+carrier.id+" → #"+receiver.id;
+ passCooldown=.8;
  return true;
+}
+
+function evaluateShot(carrier){
+ const dir=carrier.team==="HOME"?1:-1;
+ const goalX=carrier.team==="HOME"?105:0;
+ const goalDist=Math.abs(goalX-carrier.x);
+ const opp=nearestOpponent(carrier);
+
+ // Şut yalnızca mesafeye değil, baskıya ve kaleye göre açılan hatta bağlı.
+ const distanceScore=clamp(100-(goalDist-8)*4.2,0,100);
+ const pressureScore=clamp((opp.d-3)*12,0,100);
+
+ let laneRisk=0;
+ for(const defender of players){
+  if(defender.team===carrier.team)continue;
+  const goalY=34;
+  const ax=carrier.x,ay=carrier.y,bx=goalX,by=goalY;
+  const abx=bx-ax,aby=by-ay,len2=abx*abx+aby*aby;
+  if(len2<0.01)continue;
+  const t=clamp(((defender.x-ax)*abx+(defender.y-ay)*aby)/len2,0,1);
+  const px=ax+abx*t,py=ay+aby*t;
+  const laneDist=Math.hypot(defender.x-px,defender.y-py);
+  if(laneDist<5)laneRisk=Math.max(laneRisk,1-laneDist/5);
+ }
+
+ const laneScore=100-laneRisk*75;
+ const angleScore=clamp(100-Math.abs(carrier.y-34)*5,25,100);
+ let score=distanceScore*.48+pressureScore*.22+laneScore*.20+angleScore*.10;
+
+ if(goalDist>30)score-=35;
+ if(goalDist<16)score+=15;
+ return clamp(score,0,100);
+}
+
+function evaluateDribble(carrier){
+ const dir=carrier.team==="HOME"?1:-1;
+ const opp=nearestOpponent(carrier);
+ const frontX=carrier.x+dir*8;
+ const sideY=carrier.y+(carrier.y<34?5:-5);
+
+ let frontSpace=100;
+ for(const defender of players){
+  if(defender.team===carrier.team)continue;
+  const forwardGap=(defender.x-carrier.x)*dir;
+  const lateralGap=Math.abs(defender.y-carrier.y);
+  if(forwardGap>0 && forwardGap<12 && lateralGap<7){
+   frontSpace=Math.min(frontSpace,clamp((forwardGap/12)*100,0,100));
+  }
+ }
+
+ const pressure=clamp(opp.d*10,0,100);
+ const forwardValue=carrier.team==="HOME"?carrier.x:(105-carrier.x);
+ let score=frontSpace*.55+pressure*.25+clamp(forwardValue*1.2,0,100)*.20;
+
+ if(opp.d<5)score-=35;
+ if(opp.d<8)score-=18;
+ return clamp(score,0,100);
+}
+
+function decideWithBall(carrier){
+ const shot=evaluateShot(carrier);
+ const pass=evaluatePass(carrier);
+ const dribble=evaluateDribble(carrier);
+
+ const options=[
+  {type:"ŞUT",score:shot},
+  {type:"PAS",score:pass.score,receiver:pass.receiver},
+  {type:"SÜR",score:dribble}
+ ].sort((a,b)=>b.score-a.score);
+
+ const best=options[0],second=options[1];
+
+ // Yakın skorlar arasında küçük varyasyon; kararın kendisi rastgele değildir.
+ if(second && best.score-second.score<5 && Math.random()<.15){
+  return second;
+ }
+ return best;
+}
+
+function pass(carrier){
+ const decision=evaluatePass(carrier);
+ return decision.receiver?passTo(carrier,decision.receiver):false;
 }
 
 function shoot(carrier){
@@ -158,23 +277,43 @@ function separate(){
 function updateCarrier(){
  if(ball.owner==null)return;
  const p=player(ball.owner);if(!p){ball.owner=null;return}
+
+ // Futbolun merkezindeki karar: ŞUT / PAS / SÜR.
+ // Her tick'te rastgele aksiyon değil, mevcut oyun durumuna göre skorlanmış karar.
+ if(passCooldown<=0 || shotCooldown<=0){
+  const decision=decideWithBall(p);
+
+  if(decision.type==="ŞUT" && shotCooldown<=0){
+   shoot(p);return;
+  }
+
+  if(decision.type==="PAS" && passCooldown<=0 && decision.receiver){
+   passTo(p,decision.receiver);return;
+  }
+
+  if(decision.type==="SÜR"){
+   const dir=p.team==="HOME"?1:-1;
+   const opp=nearestOpponent(p);
+   let tx=p.x+dir*4.2;
+   let ty=p.y;
+
+   // Baskıda geri dönme yok: ileri + boş kanala kaç.
+   if(opp.d<8)ty=p.y+(p.y<34?4.5:-4.5);
+   moveToward(p,tx,ty,6.8);
+   updateOwnedBall();
+   return;
+  }
+
+  // En iyi seçenek cooldown yüzünden kullanılamıyorsa topu ileri taşı.
+  const dir=p.team==="HOME"?1:-1;
+  moveToward(p,p.x+dir*2.5,p.y,6.4);
+  updateOwnedBall();
+  return;
+ }
+
  const dir=p.team==="HOME"?1:-1;
- const opp=nearestOpponent(p),goalX=p.team==="HOME"?105:0;
- const goalDist=Math.abs(goalX-p.x);
- // 2v2'de karar sırası: şut > pas > sürüş.
- if(goalDist<22 && shotCooldown<=0 && opp.d>4){shoot(p);return}
- if(passCooldown<=0 && (opp.d<10 || Math.random()<.035)){if(pass(p))return}
- let tx=p.x+dir*3.5,ty=p.y;
- // Baskı altında geriye, kendi kaleye dönme. İleri + yana kaç.
- if(opp.d<7){
-   tx=p.x+dir*4.5;
-   ty=p.y+(p.y<34?4.5:-4.5);
- }
- // Çok yakın baskıda önce pas ara; top taşıyıcı kendi kalesine geri sürülmez.
- if(opp.d<9 && passCooldown<=0){
-   if(pass(p)){return}
- }
- moveToward(p,tx,ty,6.8);updateOwnedBall();
+ moveToward(p,p.x+dir*3,p.y,6.4);
+ updateOwnedBall();
 }
 
 function updateOwnedBall(){
