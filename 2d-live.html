@@ -31,7 +31,6 @@ canvas{display:block;width:100%;height:auto;background:#17633e;border:2px solid 
 </main>
 <script>
 "use strict";
-
 const PITCH={w:105,h:68,goalTop:29,goalBottom:39,dt:1/60};
 const canvas=document.getElementById("field"),ctx=canvas.getContext("2d");
 const statusEl=document.getElementById("status"),scoreEl=document.getElementById("score"),tickEl=document.getElementById("tick"),ownerEl=document.getElementById("owner"),speedEl=document.getElementById("speed"),actionEl=document.getElementById("action"),logEl=document.getElementById("log"),errorEl=document.getElementById("error");
@@ -39,218 +38,120 @@ const statusEl=document.getElementById("status"),scoreEl=document.getElementById
 let players=[],ball=null,running=false,raf=null,tickCount=0,homeScore=0,awayScore=0,lastAction="KICK-OFF",lastEvent="",clock=0;
 let passCooldown=0,shotCooldown=0;
 
-const roles=["GK","LB","LCB","RCB","RB","LM","LCM","RCM","RM","ST","ST"];
-const formationHome=[[5,34],[16,12],[16,27],[16,41],[16,56],[32,13],[32,28],[32,40],[32,55],[48,27],[48,41]];
-const formationAway=formationHome.map(([x,y])=>[105-x,y]);
-
 function makePlayers(){
- players=[];
- formationHome.forEach((p,i)=>players.push({id:i+1,team:"HOME",role:roles[i],x:p[0],y:p[1],bx:p[0],by:p[1],vx:0,vy:0,stamina:1}));
- formationAway.forEach((p,i)=>players.push({id:i+12,team:"AWAY",role:roles[i],x:p[0],y:p[1],bx:p[0],by:p[1],vx:0,vy:0,stamina:1}));
+ players=[
+  {id:1,team:"HOME",role:"A",x:32,y:30,bx:32,by:30,vx:0,vy:0},
+  {id:2,team:"HOME",role:"B",x:32,y:38,bx:32,by:38,vx:0,vy:0},
+  {id:3,team:"AWAY",role:"A",x:73,y:38,bx:73,by:38,vx:0,vy:0},
+  {id:4,team:"AWAY",role:"B",x:73,y:30,bx:73,by:30,vx:0,vy:0}
+ ];
 }
 
 function resetBall(team="HOME"){
- const id=team==="HOME"?10:21;
- const p=players.find(x=>x.id===id);
+ const id=team==="HOME"?1:3,p=player(id);
  ball={owner:id,x:p.x,y:p.y,vx:0,vy:0,targetId:null,passTeam:null,passerId:null};
- passCooldown=0.8;shotCooldown=1.2;
+ passCooldown=1.0;shotCooldown=1.0;
 }
 
 function reset(){
- stop();makePlayers();tickCount=0;clock=0;homeScore=0;awayScore=0;lastAction="KICK-OFF";lastEvent="";resetBall("HOME");clearError();statusEl.textContent="Hazır — 22 oyuncu + top";render();updateUI();
+ stop();makePlayers();tickCount=0;clock=0;homeScore=0;awayScore=0;lastAction="KICK-OFF";lastEvent="";clearError();resetBall("HOME");statusEl.textContent="Hazır — 2 vs 2";render();updateUI();
 }
-
+function player(id){return players.find(p=>p.id===id)}
 function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v))}
-function player(id){return players.find(p=>p.id===id)}
 function teamPlayers(team){return players.filter(p=>p.team===team)}
-function opponents(team){return players.filter(p=>p.team!==team)}
-
 function moveToward(p,tx,ty,speed){
  const dx=tx-p.x,dy=ty-p.y,d=Math.hypot(dx,dy);
- if(d<0.01){p.vx=0;p.vy=0;return}
+ if(d<.05){p.vx=0;p.vy=0;return}
  const step=Math.min(d,speed*PITCH.dt);
- p.vx=dx/d*step/PITCH.dt;p.vy=dy/d*step/PITCH.dt;
- p.x+=dx/d*step;p.y+=dy/d*step;
- p.x=clamp(p.x,1,104);p.y=clamp(p.y,1,67);
+ p.vx=dx/d*speed;p.vy=dy/d*speed;p.x+=dx/d*step;p.y+=dy/d*step;
+ p.x=clamp(p.x,3,102);p.y=clamp(p.y,3,65);
 }
-
 function nearestOpponent(p){
  let best=null,bd=Infinity;
- for(const q of opponents(p.team)){const d=dist(p,q);if(d<bd){bd=d;best=q}}
+ for(const q of players)if(q.team!==p.team){const d=dist(p,q);if(d<bd){bd=d;best=q}}
+ return {p:best,d:bd};
+}
+function nearestMate(p){
+ let best=null,bd=Infinity;
+ for(const q of teamPlayers(p.team))if(q.id!==p.id){const d=dist(p,q);if(d<bd){bd=d;best=q}}
  return {p:best,d:bd};
 }
 
-function tacticalTarget(p,owner){
- const dir=p.team==="HOME"?1:-1;
- let x=p.bx,y=p.by;
- const bp=owner?player(owner):null;
- const ballX=ball.x,ballY=ball.y;
-
- // Takım şekli: oyuncular topa göre küçük ama sürekli kayan hedefler alır.
- // Böylece sadece top taşıyan ve pres yapanlar değil, savunma ve orta saha da oyuna katılır.
- if(p.role==="GK"){
-   x=p.bx + clamp((ballX-p.bx)*0.10,-3,3);
-   y=p.by + clamp((ballY-p.by)*0.10,-8,8);
- }else{
-   const zoneWidth =
-     p.role==="ST" ? 20 :
-     (p.role==="LM"||p.role==="RM"||p.role==="LCM"||p.role==="RCM") ? 15 : 9;
-
-   const shiftX=clamp((ballX-52.5)*0.18,-zoneWidth,zoneWidth);
-   const shiftY=clamp((ballY-34)*0.22,-8,8);
-   x+=shiftX;
-   y+=shiftY;
-
-   // Top bizim takımdayken destek üçgeni kur.
-   if(bp && bp.team===p.team && p.id!==bp.id){
-     const d=dist(p,bp);
-     const rolePush =
-       p.role==="ST" ? 5 :
-       (p.role==="LM"||p.role==="RM") ? 3 :
-       (p.role==="LCM"||p.role==="RCM") ? 1 : -2;
-     x += dir*rolePush;
-     if(d<28){
-       // Aynı oyuncunun üstüne gitmek yerine pas açısı oluştur.
-       y += (p.by<34 ? -1 : 1) * 3;
-     }
-   }
-
-   // Rakip topa sahipken savunma hattı ve orta saha topa doğru kayar,
-   // fakat herkes topun üstüne yığılmaz.
-   if(bp && bp.team!==p.team){
-     const retreat =
-       (p.role==="LB"||p.role==="LCB"||p.role==="RCB"||p.role==="RB") ? -dir*3 :
-       (p.role==="LM"||p.role==="LCM"||p.role==="RCM"||p.role==="RM") ? -dir*1 : 0;
-     x += retreat;
-   }
-
-   if(p.role==="ST") x+=dir*6;
-   if(p.role==="LM"||p.role==="RM") x+=dir*3;
- }
- return {x:clamp(x,2,103),y:clamp(y,2,66)};
-}
-
 function choosePass(carrier){
- const mates=teamPlayers(carrier.team).filter(p=>p.id!==carrier.id&&p.role!=="GK");
- const dir=carrier.team==="HOME"?1:-1;
- const candidates=mates.map(p=>{
-   const opp=nearestOpponent(p).d;
-   const forward=(p.x-carrier.x)*dir;
-   const d=dist(carrier,p);
-   const lane=Math.abs(p.y-carrier.y);
-   return {p,score:opp*1.4+forward*0.9-lane*0.15-d*0.25,d,forward};
- }).filter(c=>c.d<42||c.forward>0);
- if(!candidates.length)return null;
- candidates.sort((a,b)=>b.score-a.score);
- return candidates[0].p;
-}
-
-function pressure(carrier){
- const o=nearestOpponent(carrier);
- return o.d<9;
+ const mate=nearestMate(carrier).p;
+ if(!mate)return null;
+ const goalX=carrier.team==="HOME"?105:0;
+ const forward=(mate.x-carrier.x)*(carrier.team==="HOME"?1:-1);
+ const opp=nearestOpponent(mate).d;
+ const distToMate=dist(carrier,mate);
+ if(distToMate>30)return null;
+ if(forward<-8 && opp>8)return null;
+ return mate;
 }
 
 function pass(carrier){
  const receiver=choosePass(carrier);
  if(!receiver)return false;
  const dx=receiver.x-carrier.x,dy=receiver.y-carrier.y,d=Math.hypot(dx,dy)||1;
- const lead=Math.min(4,d*0.18);
- const tx=receiver.x+(receiver.vx||0)*lead*0.12;
- const ty=receiver.y+(receiver.vy||0)*lead*0.12;
- const pdx=tx-carrier.x,pdy=ty-carrier.y,pd=Math.hypot(pdx,pdy)||1;
- const dirx=pdx/pd,diry=pdy/pd;
  ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;
- ball.vx=dirx*24+((receiver.vx||0)*0.25);
- ball.vy=diry*24+((receiver.vy||0)*0.25);
+ ball.vx=dx/d*18;ball.vy=dy/d*18;
  ball.targetId=receiver.id;ball.passTeam=carrier.team;ball.passerId=carrier.id;
- lastAction="PASS #"+carrier.id+" → #"+receiver.id;
- passCooldown=0.65;
+ lastAction="PAS #"+carrier.id+" → #"+receiver.id;passCooldown=.8;
  return true;
 }
 
 function shoot(carrier){
- const goalX=carrier.team==="HOME"?105:0,gy=34+(Math.random()-0.5)*5;
- const dx=goalX-carrier.x,dy=gy-carrier.y,d=Math.hypot(dx,dy)||1;
- ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;ball.vx=dx/d*27;ball.vy=dy/d*27;ball.targetId=null;ball.passTeam=carrier.team;ball.passerId=carrier.id;
- lastAction="ŞUT #"+carrier.id;shotCooldown=1.3;passCooldown=0.7;
-}
-
-function updateOwnedBall(){
- if(ball.owner!=null){const p=player(ball.owner);if(p){ball.x=p.x;ball.y=p.y;ball.vx=0;ball.vy=0}}
+ const gx=carrier.team==="HOME"?105:0,gy=34+(Math.random()-.5)*5;
+ const dx=gx-carrier.x,dy=gy-carrier.y,d=Math.hypot(dx,dy)||1;
+ ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;ball.vx=dx/d*23;ball.vy=dy/d*23;ball.targetId=null;ball.passTeam=carrier.team;ball.passerId=carrier.id;
+ lastAction="ŞUT #"+carrier.id;shotCooldown=1.4;passCooldown=.6;
 }
 
 function updatePlayers(){
- const owner=ball.owner, bp=owner?player(owner):null;
- const freeChasers=[];
-
- if(owner==null){
-   const ranked=players.map(p=>({p,d:dist(p,ball)})).sort((a,b)=>a.d-b.d);
-   // Serbest top için 3 oyuncu: biri mücadele, ikisi destek.
-   ranked.slice(0,3).forEach(x=>freeChasers.push(x.p.id));
- }
-
+ const owner=ball.owner,bp=owner?player(owner):null;
  for(const p of players){
-   if(p.id===owner)continue;
-
-   const t=tacticalTarget(p,owner);
-   let tx=t.x,ty=t.y;
-
-   if(owner==null && freeChasers.includes(p.id)){
-     tx=ball.x;
-     ty=ball.y;
-   }else if(bp){
-     const sameTeam=teamPlayers(p.team);
-
-     if(p.team!==bp.team){
-       // Rakipte sadece en yakın iki oyuncu gerçek pres yapar.
-       const pressers=sameTeam
-         .map(q=>({q,d:dist(q,bp)}))
-         .sort((a,b)=>a.d-b.d)
-         .slice(0,2)
-         .map(x=>x.q.id);
-
-       if(pressers.includes(p.id) && dist(p,bp)<24){
-         tx=bp.x;ty=bp.y;
-       }
-     }else{
-       // Top bizdeyse çevredeki oyuncular pas açısı ve destek için hareket eder.
-       const d=dist(p,bp);
-       if(d<32 && p.role!=="GK"){
-         const side=p.by<34?-1:1;
-         tx += dirFor(p)*Math.min(5,32-d)*0.35;
-         ty += side*Math.min(4,32-d)*0.45;
-       }
-     }
-   }
-
-   const speed=p.role==="GK"?4.2:
-               p.role==="ST"?7.0:
-               (p.role==="LCM"||p.role==="RCM")?7.2:6.5;
-
-   moveToward(p,tx,ty,speed);
+  if(p.id===owner)continue;
+  let tx=p.bx,ty=p.by;
+  const dir=p.team==="HOME"?1:-1;
+  if(bp && bp.team===p.team){
+    const mate=bp;
+    const d=dist(p,mate);
+    // Hücum destek açısı: top sahibinden uzaklaşıp pas koridoru aç.
+    tx=mate.x+dir*7;
+    ty=p.by<34?mate.y-7:mate.y+7;
+    if(d<7){tx+=dir*4;ty+=p.by<34?-3:3}
+  }else if(bp && bp.team!==p.team){
+    const opp=bp,d=dist(p,opp);
+    // En yakın savunmacı baskı yapar, diğeri pas yolunu kapatır.
+    const mate=nearestMate(p).p;
+    const mateD=mate?dist(mate,opp):999;
+    if(d<=mateD+1){
+      tx=opp.x;ty=opp.y;
+    }else{
+      tx=(opp.x+p.bx)/2;
+      ty=(opp.y+p.by)/2;
+    }
+  }else{
+    // Top serbestse en yakın oyuncu topa, diğeri destek pozisyonuna.
+    const d=dist(p,ball),mate=nearestMate(p).p,mateD=mate?dist(mate,ball):999;
+    if(d<=mateD) {tx=ball.x;ty=ball.y}
+    else {tx=p.bx+(ball.x-p.bx)*.25;ty=p.by+(ball.y-p.by)*.25}
+  }
+  moveToward(p,tx,ty,p.role==="A"?7.0:6.6);
  }
- separatePlayers();
+ separate();
 }
 
-function dirFor(p){return p.team==="HOME"?1:-1;}
-
-function separatePlayers(){
- const minD=2.8;
- for(let i=0;i<players.length;i++){
-   for(let j=i+1;j<players.length;j++){
-     const a=players[i],b=players[j];
-     if(a.id===ball.owner||b.id===ball.owner)continue;
-     const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
-     if(d>0&&d<minD){
-       const push=(minD-d)/2;
-       const nx=dx/d,ny=dy/d;
-       a.x=clamp(a.x-nx*push,1,104);
-       a.y=clamp(a.y-ny*push,1,67);
-       b.x=clamp(b.x+nx*push,1,104);
-       b.y=clamp(b.y+ny*push,1,67);
-     }
-   }
+function separate(){
+ const minD=3.0;
+ for(let i=0;i<players.length;i++)for(let j=i+1;j<players.length;j++){
+  const a=players[i],b=players[j],dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
+  if(d>0&&d<minD){
+   const push=(minD-d)/2,nx=dx/d,ny=dy/d;
+   a.x=clamp(a.x-nx*push,3,102);a.y=clamp(a.y-ny*push,3,65);
+   b.x=clamp(b.x+nx*push,3,102);b.y=clamp(b.y+ny*push,3,65);
+  }
  }
 }
 
@@ -258,75 +159,63 @@ function updateCarrier(){
  if(ball.owner==null)return;
  const p=player(ball.owner);if(!p){ball.owner=null;return}
  const dir=p.team==="HOME"?1:-1;
- const goalX=p.team==="HOME"?105:0;
+ const opp=nearestOpponent(p),goalX=p.team==="HOME"?105:0;
  const goalDist=Math.abs(goalX-p.x);
- const pressureInfo=nearestOpponent(p);
- const shouldShoot=p.role==="ST"&&goalDist<25&&shotCooldown<=0&&pressureInfo.d>3.5;
- if(shouldShoot){shoot(p);return}
- if(passCooldown<=0&&(pressureInfo.d<10||Math.random()<0.055)){
-   if(pass(p))return;
- }
- let tx=p.x+dir*5,ty=p.y;
- if(pressureInfo.d<7){tx=p.x-dir*4;ty=p.y+(p.y<34?4:-4)}
- moveToward(p,tx,ty,7.2);
- updateOwnedBall();
+ // 2v2'de karar sırası: şut > pas > sürüş.
+ if(goalDist<22 && shotCooldown<=0 && opp.d>4){shoot(p);return}
+ if(passCooldown<=0 && (opp.d<10 || Math.random()<.035)){if(pass(p))return}
+ let tx=p.x+dir*3.5,ty=p.y;
+ if(opp.d<6){tx=p.x-dir*3;ty=p.y+(p.y<34?3:-3)}
+ moveToward(p,tx,ty,6.8);updateOwnedBall();
+}
+
+function updateOwnedBall(){
+ if(ball.owner!=null){const p=player(ball.owner);if(p){ball.x=p.x;ball.y=p.y;ball.vx=0;ball.vy=0}}
 }
 
 function updateFreeBall(){
  if(ball.owner!=null)return;
- ball.x+=ball.vx*PITCH.dt;ball.y+=ball.vy*PITCH.dt;
- ball.vx*=0.992;ball.vy*=0.992;
+ ball.x+=ball.vx*PITCH.dt;ball.y+=ball.vy*PITCH.dt;ball.vx*=.985;ball.vy*=.985;
  const speed=Math.hypot(ball.vx,ball.vy);
-
  if(ball.targetId!=null){
-   const r=player(ball.targetId);
-   if(r&&dist(r,ball)<4.5){
-     ball.owner=r.id;ball.x=r.x;ball.y=r.y;ball.vx=0;ball.vy=0;lastAction="KONTROL #"+r.id;
-     return;
-   }
+  const r=player(ball.targetId);
+  if(r&&dist(r,ball)<3.5){ball.owner=r.id;ball.x=r.x;ball.y=r.y;ball.vx=0;ball.vy=0;lastAction="KONTROL #"+r.id;return}
  }
  for(const p of players){
-   const d=dist(p,ball);
-   if(d<1.9&&speed<24){
-     ball.owner=p.id;ball.x=p.x;ball.y=p.y;ball.vx=0;ball.vy=0;lastAction="KAZANILDI #"+p.id;return;
-   }
+  if(dist(p,ball)<2.0&&speed<22){ball.owner=p.id;ball.x=p.x;ball.y=p.y;ball.vx=0;ball.vy=0;lastAction="TOP #"+p.id;return}
  }
  const goalY=ball.y>=PITCH.goalTop&&ball.y<=PITCH.goalBottom;
  if(ball.x<0||ball.x>PITCH.w||ball.y<0||ball.y>PITCH.h){
-   if((ball.x<0||ball.x>PITCH.w)&&goalY){
-     const scoring=ball.x<0?"AWAY":"HOME";
-     if(scoring==="HOME")homeScore++;else awayScore++;
-     lastEvent="GOOOL — "+scoring;
-     const restartTeam=scoring==="HOME"?"AWAY":"HOME";
-     makePlayers();resetBall(restartTeam);return;
-   }
-   const restartTeam=ball.passTeam==="HOME"?"AWAY":"HOME";
-   lastEvent="TAÇ / OYUN DIŞI";
-   makePlayers();resetBall(restartTeam);return;
+  if((ball.x<0||ball.x>PITCH.w)&&goalY){
+   const scoring=ball.x<0?"AWAY":"HOME";
+   if(scoring==="HOME")homeScore++;else awayScore++;
+   lastEvent="GOOOL — "+scoring;
+   resetMatch(scoring==="HOME"?"AWAY":"HOME");return;
+  }
+  lastEvent="OYUN DIŞI";resetMatch(ball.passTeam==="HOME"?"AWAY":"HOME");return;
  }
- if(speed<0.7){
-   let nearest=players[0],bd=Infinity;
-   for(const p of players){const d=dist(p,ball);if(d<bd){bd=d;nearest=p}}
-   ball.owner=nearest.id;ball.x=nearest.x;ball.y=nearest.y;ball.vx=0;ball.vy=0;lastAction="TOP KAZANILDI #"+nearest.id;
+ if(speed<.7){
+  let best=players[0],bd=Infinity;
+  for(const p of players){const d=dist(p,ball);if(d<bd){bd=d;best=p}}
+  ball.owner=best.id;lastAction="TOP KAZANILDI #"+best.id;
  }
+}
+
+function resetMatch(team){
+ makePlayers();resetBall(team);
 }
 
 function tick(){
  try{
-   const steps=2;
-   for(let i=0;i<steps;i++){
-     tickCount++;clock+=PITCH.dt;passCooldown-=PITCH.dt;shotCooldown-=PITCH.dt;
-     updatePlayers();
-     updateCarrier();
-     updateFreeBall();
-     updateOwnedBall();
-   }
-   render();updateUI();
+  for(let i=0;i<2;i++){
+   tickCount++;clock+=PITCH.dt;passCooldown-=PITCH.dt;shotCooldown-=PITCH.dt;
+   updatePlayers();updateCarrier();updateFreeBall();updateOwnedBall();
+  }
+  render();updateUI();
  }catch(e){fail(e)}
 }
-
 function frame(){if(!running)return;tick();raf=requestAnimationFrame(frame)}
-function start(){if(running)return;running=true;statusEl.textContent="CANLI — 2D MOTOR ÇALIŞIYOR";raf=requestAnimationFrame(frame)}
+function start(){if(running)return;running=true;statusEl.textContent="CANLI — 2 vs 2";raf=requestAnimationFrame(frame)}
 function stop(){running=false;if(raf!==null)cancelAnimationFrame(raf);raf=null;statusEl.textContent="Durduruldu"}
 
 function drawPitch(){
@@ -338,35 +227,26 @@ function drawPitch(){
  ctx.strokeRect(50,210,140,260);ctx.strokeRect(910,210,140,260);ctx.strokeRect(50,275,55,130);ctx.strokeRect(995,275,55,130);
  ctx.strokeRect(20,290,30,100);ctx.strokeRect(1050,290,30,100);
 }
-function sx(x){return 50+x*(1000/PITCH.w)}function sy(y){return 40+y*(600/PITCH.h)}
+function sx(x){return 50+x*(1000/PITCH.w)}
+function sy(y){return 40+y*(600/PITCH.h)}
 function drawPlayer(p){
- const x=sx(p.x),y=sy(p.y),r=13,own=ball.owner===p.id;
- if(own){ctx.beginPath();ctx.arc(x,y,r+7,0,Math.PI*2);ctx.strokeStyle="#ffd84d";ctx.lineWidth=3;ctx.stroke()}
- ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=p.team==="HOME"?"#2584ff":"#e64747";ctx.fill();ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.stroke();
- ctx.fillStyle="#fff";ctx.font="bold 10px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(p.id),x,y);
+ const x=sx(p.x),y=sy(p.y),r=18,own=ball.owner===p.id;
+ ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=p.team==="HOME"?"#2584ff":"#e64747";ctx.fill();
+ ctx.strokeStyle=own?"#ffd84d":"#fff";ctx.lineWidth=own?4:2;ctx.stroke();
+ ctx.fillStyle="#fff";ctx.font="bold 12px Arial";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(String(p.id),x,y);
 }
 function drawBall(){
- const x=sx(ball.x),y=sy(ball.y),s=Math.hypot(ball.vx,ball.vy);
- if(s>1){const k=Math.min(s*.012,25),d=s||1;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-ball.vx/d*k,y-ball.vy/d*k);ctx.strokeStyle="rgba(255,255,255,.4)";ctx.lineWidth=3;ctx.stroke()}
- ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
+ const x=sx(ball.x),y=sy(ball.y);ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.strokeStyle="#111";ctx.lineWidth=2;ctx.stroke();
 }
 function render(){drawPitch();for(const p of players)drawPlayer(p);drawBall()}
 function updateUI(){
  const s=Math.hypot(ball.vx,ball.vy);
- scoreEl.textContent=homeScore+" - "+awayScore;tickEl.textContent=tickCount.toString();ownerEl.textContent=ball.owner==null?"SAHİPSİZ":"#"+ball.owner;speedEl.textContent=s.toFixed(1);actionEl.textContent=lastAction;
+ scoreEl.textContent=homeScore+" - "+awayScore;tickEl.textContent=String(tickCount);ownerEl.textContent=ball.owner==null?"SAHİPSİZ":"#"+ball.owner;speedEl.textContent=s.toFixed(1);actionEl.textContent=lastAction;
  const op=ball.owner?player(ball.owner):null;
- logEl.textContent=[
-   "Oyun süresi: "+Math.floor(clock/60)+":"+String(Math.floor(clock%60)).padStart(2,"0"),
-   "Top: "+(ball.owner==null?"SERBEST":"#"+ball.owner+" "+(op?op.team:"")),
-   "Top koordinatı: "+ball.x.toFixed(1)+", "+ball.y.toFixed(1),
-   "Hız: "+s.toFixed(1),
-   "Aksiyon: "+lastAction,
-   lastEvent||""
- ].filter(Boolean).join("\n");
+ logEl.textContent=["Oyun süresi: "+Math.floor(clock/60)+":"+String(Math.floor(clock%60)).padStart(2,"0"),"Top: "+(ball.owner==null?"SERBEST":"#"+ball.owner+" "+(op?op.team:"")),"Top: "+ball.x.toFixed(1)+", "+ball.y.toFixed(1),"Aksiyon: "+lastAction,lastEvent||""].filter(Boolean).join("\n");
 }
 function fail(e){stop();errorEl.style.display="block";errorEl.textContent=e?.stack||String(e);console.error(e)}
 function clearError(){errorEl.style.display="none";errorEl.textContent=""}
-
 document.getElementById("start").onclick=start;
 document.getElementById("stop").onclick=stop;
 document.getElementById("step").onclick=tick;
