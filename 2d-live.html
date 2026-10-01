@@ -147,24 +147,54 @@ function updateOwnedBall(){
 
 function updatePlayers(){
  const owner=ball.owner, bp=owner?player(owner):null;
+ const freeChasers=[];
+ if(owner==null){
+   const ranked=players.map(p=>({p,d:dist(p,ball)})).sort((a,b)=>a.d-b.d);
+   ranked.slice(0,2).forEach(x=>freeChasers.push(x.p.id));
+ }
  for(const p of players){
    if(p.id===owner)continue;
    const t=tacticalTarget(p,owner);
    let tx=t.x,ty=t.y;
-   const nearest=nearestOpponent(p);
-   if(ball.owner==null && ball.passTeam!==null){
-     const d=dist(p,ball);
-     if(d<32){tx=ball.x;ty=ball.y}
-   } else if(bp){
-     const d=dist(p,bp);
-     if(p.team!==bp.team && d<24){tx=bp.x;ty=bp.y}
+   if(owner==null && ball.passTeam!==null){
+     if(freeChasers.includes(p.id)){
+       tx=ball.x;ty=ball.y;
+     }
+   } else if(bp && p.team!==bp.team){
+     const sameTeam=teamPlayers(p.team);
+     const pressers=sameTeam
+       .map(q=>({q,d:dist(q,bp)}))
+       .sort((a,b)=>a.d-b.d)
+       .slice(0,2)
+       .map(x=>x.q.id);
+     if(pressers.includes(p.id) && dist(p,bp)<18){
+       tx=bp.x;ty=bp.y;
+     }
    }
    const speed=p.role==="GK"?4.0:6.5;
    moveToward(p,tx,ty,speed);
  }
+ separatePlayers();
 }
 
-function updateCarrier(){
+function separatePlayers(){
+ const minD=2.8;
+ for(let i=0;i<players.length;i++){
+   for(let j=i+1;j<players.length;j++){
+     const a=players[i],b=players[j];
+     if(a.id===ball.owner||b.id===ball.owner)continue;
+     const dx=b.x-a.x,dy=b.y-a.y,d=Math.hypot(dx,dy);
+     if(d>0&&d<minD){
+       const push=(minD-d)/2;
+       const nx=dx/d,ny=dy/d;
+       a.x=clamp(a.x-nx*push,1,104);
+       a.y=clamp(a.y-ny*push,1,67);
+       b.x=clamp(b.x+nx*push,1,104);
+       b.y=clamp(b.y+ny*push,1,67);
+     }
+   }
+ }
+}\n\nfunction updateCarrier(){
  if(ball.owner==null)return;
  const p=player(ball.owner);if(!p){ball.owner=null;return}
  const dir=p.team==="HOME"?1:-1;
