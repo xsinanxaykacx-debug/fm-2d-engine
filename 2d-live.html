@@ -104,7 +104,7 @@ function choosePass(carrier){
    const forward=(p.x-carrier.x)*dir;
    const d=dist(carrier,p);
    const lane=Math.abs(p.y-carrier.y);
-   return {p,score:opp*1.4+forward*0.9-lane*0.15-d*0.25};
+   return {p,score:opp*1.4+forward*0.9-lane*0.15-d*0.25,d,forward};
  }).filter(c=>c.d<42||c.forward>0);
  if(!candidates.length)return null;
  candidates.sort((a,b)=>b.score-a.score);
@@ -121,7 +121,10 @@ function pass(carrier){
  if(!receiver)return false;
  const dx=receiver.x-carrier.x,dy=receiver.y-carrier.y,d=Math.hypot(dx,dy)||1;
  const lead=Math.min(4,d*0.18);
- const dirx=dx/d,diry=dy/d;
+ const tx=receiver.x+(receiver.vx||0)*lead*0.12;
+ const ty=receiver.y+(receiver.vy||0)*lead*0.12;
+ const pdx=tx-carrier.x,pdy=ty-carrier.y,pd=Math.hypot(pdx,pdy)||1;
+ const dirx=pdx/pd,diry=pdy/pd;
  ball.owner=null;ball.x=carrier.x;ball.y=carrier.y;
  ball.vx=dirx*24+((receiver.vx||0)*0.25);
  ball.vy=diry*24+((receiver.vy||0)*0.25);
@@ -151,7 +154,7 @@ function updatePlayers(){
    const nearest=nearestOpponent(p);
    if(ball.owner==null && ball.passTeam!==null){
      const d=dist(p,ball);
-     if(d<24){tx=ball.x;ty=ball.y}
+     if(d<32){tx=ball.x;ty=ball.y}
    } else if(bp){
      const d=dist(p,bp);
      if(p.team!==bp.team && d<24){tx=bp.x;ty=bp.y}
@@ -187,7 +190,7 @@ function updateFreeBall(){
 
  if(ball.targetId!=null){
    const r=player(ball.targetId);
-   if(r&&dist(r,ball)<2.8){
+   if(r&&dist(r,ball)<4.5){
      ball.owner=r.id;ball.x=r.x;ball.y=r.y;ball.vx=0;ball.vy=0;lastAction="KONTROL #"+r.id;
      return;
    }
