@@ -143,18 +143,34 @@ function thinkPlayer(p,perception){
    }
   }
 
-  const visionBonus=attributes.vision*.18;
-  const decisionBonus=attributes.decision*.18;
-  const safety=m.passSafety*.35;
-  const forward=clamp(50+m.forward*4,0,100)*.18;
-  const attacking=m.attackingValue*.11;
-  const lane=(100-laneRisk*85)*.16;
+  const visionBonus=attributes.vision*.14;
+  const decisionBonus=attributes.decision*.16;
+  const safety=m.passSafety*.26;
+  const forward=clamp(50+m.forward*4,0,100)*.14;
+  const attacking=m.attackingValue*.08;
+  const lane=(100-laneRisk*85)*.12;
+
+  // Baskı altındaki oyuncu için en yakın güvenli takım arkadaşının
+  // yana/geriye değil, baskıdan çıkış sağlayan pası ciddi şekilde değerlenir.
+  const escapeValue=pressure>55
+    ? clamp((12-m.distance)*6,0,72)*.32
+    : clamp((12-m.distance)*4,0,48)*.12;
+
+  // Arkadaşın biraz aşağıda/yanında olması, ileri olmamasına rağmen
+  // baskıdan çıkış pasıysa cezalandırılmaz.
+  const nearbyEscape=(pressure>55 && m.distance<11 && m.pressure>6)
+    ? 12 : 0;
 
   return {
    type:"PASS",
    target:m.playerId,
-   score:clamp(visionBonus+decisionBonus+safety+forward+attacking+lane,0,100),
-   reason:m.pressure>70?"ARKADAŞ AÇIK":m.forward>5?"İLERİ PAS":"GÜVENLİ PAS"
+   score:clamp(
+    visionBonus+decisionBonus+safety+forward+attacking+lane+escapeValue+nearbyEscape,
+    0,100
+   ),
+   reason:pressure>55 && m.distance<11
+    ?"BASKIDAN ÇIKIŞ PASI"
+    :(m.pressure>70?"ARKADAŞ AÇIK":m.forward>5?"İLERİ PAS":"GÜVENLİ PAS")
   };
  });
 
@@ -249,9 +265,10 @@ function executePlayerDecision(p,decision){
 
  if(decision.type==="PASS"&&decision.target){
   const receiver=player(decision.target);
+
   if(receiver){
-   // Pas kararı verildiyse topu anlamsız yere sürmek yerine
-   // pas penceresinin açılmasını beklerken pas koridoruna yaklaş.
+   // Oyuncu PAS seçtiyse karar bozulup otomatik SÜR'e dönmez.
+   // Pas cooldown'ı dolana kadar baskıdan çıkacak küçük bir konum değişikliği yapar.
    if(passCooldown<=0){
     passTo(p,receiver);
     lastAction="#"+p.id+" DÜŞÜNDÜ → PAS #"+receiver.id;
@@ -259,27 +276,44 @@ function executePlayerDecision(p,decision){
    }
 
    const dir=p.team==="HOME"?1:-1;
-   const laneY=receiver.y+(receiver.y<p.y?3:-3);
-   moveToward(p,clamp(p.x+dir*1.8,3,102),clamp(laneY,3,65),5.2);
+   const opp=nearestOpponent(p);
+   const dx=receiver.x-p.x;
+   const dy=receiver.y-p.y;
+
+   // Rakip baskısından uzaklaş; aynı zamanda alıcıyla görüş hattını koru.
+   let tx=p.x;
+   let ty=p.y;
+
+   if(opp.p&&opp.d<9){
+    const awayX=p.x-(opp.p.x-p.x)*0.55;
+    const awayY=p.y-(opp.p.y-p.y)*0.55;
+    tx=awayX;
+    ty=awayY;
+   }else{
+    tx=p.x+clamp(dx*0.18,-1.5,1.5);
+    ty=p.y+clamp(dy*0.18,-2.0,2.0);
+   }
+
+   tx=clamp(tx,3,102);
+   ty=clamp(ty,3,65);
+   moveToward(p,tx,ty,4.8);
    updateOwnedBall();
-   lastAction="#"+p.id+" PAS PENCERESİ ARIYOR → #"+receiver.id;
+   lastAction="#"+p.id+" PASI BEKLİYOR → #"+receiver.id;
    return true;
   }
  }
 
+ // Ancak gerçekten PAS/ŞUT seçilmemişse sür.
  const dir=p.team==="HOME"?1:-1;
  const opp=nearestOpponent(p);
-
- // Baskı altındaki oyuncu doğrudan rakibe doğru koşmaz.
- // Önce rakipten uzaklaşıp pas açısı yaratır.
  let tx=p.x+dir*4.2,ty=p.y;
- if(opp.d<8){
-  const escape=opp.p ? (p.y<=opp.p.y?-1:1) : 1;
+
+ if(opp.p&&opp.d<8){
+  const escape= p.y<=opp.p.y ? -1 : 1;
   ty=p.y+escape*5.5;
-  tx=p.x+dir*2.0;
+  tx=p.x+dir*1.2;
  }
 
- // Rakip kale yönünde saha dışına çıkmayı engelle.
  tx=clamp(tx,3,102);
  ty=clamp(ty,3,65);
 
