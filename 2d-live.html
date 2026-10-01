@@ -194,7 +194,9 @@ function separatePlayers(){
      }
    }
  }
-}\n\nfunction updateCarrier(){
+}
+
+function updateCarrier(){
  if(ball.owner==null)return;
  const p=player(ball.owner);if(!p){ball.owner=null;return}
  const dir=p.team==="HOME"?1:-1;
@@ -302,7 +304,8 @@ function updateUI(){
    "Hız: "+s.toFixed(1),
    "Aksiyon: "+lastAction,
    lastEvent||""
- ].filter(Boolean).join("\n");
+ ].filter(Boolean).join("
+");
 }
 function fail(e){stop();errorEl.style.display="block";errorEl.textContent=e?.stack||String(e);console.error(e)}
 function clearError(){errorEl.style.display="none";errorEl.textContent=""}
